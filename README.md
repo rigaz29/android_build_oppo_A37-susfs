@@ -19,7 +19,7 @@ The kernel code lives in
 | Stage | Features | Status |
 |---|---|---|
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
-| 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, build-verified, needs on-device test |
+| 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | todo |
 | 3 | `sus_path` (hide files/dirs), sdcard monitor | todo |
 
