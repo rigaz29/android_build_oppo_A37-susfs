@@ -1,0 +1,116 @@
+From 46f5962bd226ff7f63241b5d51439fb90e17d3d8 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 14:55:39 +0000
+Subject: [PATCH 2/2] kernelsu: wire susfs stage 2 (sus_kstat, sus_map) into
+ the reboot supercall
+
+Handle CMD_SUSFS_ADD_SUS_KSTAT, CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY,
+CMD_SUSFS_UPDATE_SUS_KSTAT and CMD_SUSFS_ADD_SUS_MAP from root callers.
+Expose CONFIG_KSU_SUSFS_SUS_KSTAT and CONFIG_KSU_SUSFS_SUS_MAP and
+enable them in lineageos_a37f_defconfig.
+
+kernel_umount now sets TIF_KSU_UNMOUNTABLE whenever SUSFS is enabled,
+not only under KSU_HOSTSREDIRECT: sus_map and the non-su fdinfo/statfs
+spoofs gate on that flag, and this fork only sets it there.
+---
+ arch/arm64/configs/lineageos_a37f_defconfig |  4 +++-
+ drivers/kernelsu/Kconfig                    | 19 ++++++++++++++++++-
+ drivers/kernelsu/feature/kernel_umount.c    |  4 +++-
+ drivers/kernelsu/supercall/supercall.c      | 14 ++++++++++++++
+ 4 files changed, 38 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
+index f8e798ef700..aeea2ab10c6 100644
+--- a/arch/arm64/configs/lineageos_a37f_defconfig
++++ b/arch/arm64/configs/lineageos_a37f_defconfig
+@@ -883,9 +883,11 @@ CONFIG_KSU=y
+ # CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
+ CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+ CONFIG_KSU_LSM_SECURITY_HOOKS=y
+-# SUSFS (stage 0: core + uname/cmdline spoof + log; stage 1: sus_mount)
++# SUSFS (stage 0: core + uname/cmdline spoof + log; stage 1: sus_mount; stage 2: sus_kstat + sus_map)
+ CONFIG_KSU_SUSFS=y
+ CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+ CONFIG_KSU_SUSFS_ENABLE_LOG=y
+ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+ CONFIG_KSU_SUSFS_SUS_MOUNT=y
++CONFIG_KSU_SUSFS_SUS_KSTAT=y
++CONFIG_KSU_SUSFS_SUS_MAP=y
+diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
+index 790f7d5e66d..1936d0e0ce0 100644
+--- a/drivers/kernelsu/Kconfig
++++ b/drivers/kernelsu/Kconfig
+@@ -134,7 +134,7 @@ endmenu
+ 
+ menu "KernelSU - SUSFS"
+ # Only the features already ported to this 3.10 tree are exposed here. The
+-# rest (sus_path, sus_kstat, sus_map, open_redirect, symbol hiding)
++# rest (sus_path, open_redirect, symbol hiding)
+ # need VFS hooks that are not in yet; they get their option when ported.
+ 
+ config KSU_SUSFS
+@@ -174,4 +174,21 @@ config KSU_SUSFS_SUS_MOUNT
+ 	  /proc/<pid>/mountinfo and /proc/<pid>/mountstats for non-su
+ 	  processes. Can be toggled at runtime with ksu_susfs.
+ 
++config KSU_SUSFS_SUS_KSTAT
++	bool "Enable to spoof stat attributes of files"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Spoof stat/statfs, /proc/<pid>/fdinfo, inotify fdinfo and
++	  /proc/<pid>/maps dev/ino of files marked with ksu_susfs
++	  add_sus_kstat.
++
++config KSU_SUSFS_SUS_MAP
++	bool "Enable to hide memory maps of files"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Hide VMAs and map_files entries of files marked with
++	  ksu_susfs add_sus_map for umounted app processes.
++
+ endmenu
+diff --git a/drivers/kernelsu/feature/kernel_umount.c b/drivers/kernelsu/feature/kernel_umount.c
+index 15aded3c966..6381a33c9c6 100644
+--- a/drivers/kernelsu/feature/kernel_umount.c
++++ b/drivers/kernelsu/feature/kernel_umount.c
+@@ -82,7 +82,9 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
+ 		return 0;
+ 	}
+ 
+-#ifdef CONFIG_KSU_HOSTSREDIRECT
++#if defined(CONFIG_KSU_HOSTSREDIRECT) || defined(CONFIG_KSU_SUSFS)
++	// susfs needs the mark too: sus_map and the fdinfo/mountstats spoofs
++	// for non-su processes rely on TIF_KSU_UNMOUNTABLE being set here.
+ 	set_thread_flag(TIF_KSU_UNMOUNTABLE);
+ #endif
+ 	// umount the target mnt
+diff --git a/drivers/kernelsu/supercall/supercall.c b/drivers/kernelsu/supercall/supercall.c
+index 2d9064c5768..4a5cb8a581a 100644
+--- a/drivers/kernelsu/supercall/supercall.c
++++ b/drivers/kernelsu/supercall/supercall.c
+@@ -134,6 +134,20 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+ 		case CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS:
+ 			susfs_set_hide_sus_mnts_for_non_su_procs(arg);
+ 			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_KSTAT
++		case CMD_SUSFS_ADD_SUS_KSTAT:
++		case CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY:
++			susfs_add_sus_kstat(arg);
++			return 0;
++		case CMD_SUSFS_UPDATE_SUS_KSTAT:
++			susfs_update_sus_kstat(arg);
++			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_MAP
++		case CMD_SUSFS_ADD_SUS_MAP:
++			susfs_add_sus_map(arg);
++			return 0;
+ #endif
+ 		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
+ 			susfs_set_avc_log_spoofing(arg);
+-- 
+2.43.0
+
