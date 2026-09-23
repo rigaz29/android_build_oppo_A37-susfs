@@ -1,0 +1,35 @@
+From c73b2e2c0283243eebee1f94eaf999ee93c137d3 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 17:55:49 +0000
+Subject: [PATCH] fs: extend the kallsyms hiding filter for backslashxx symbol
+ names
+
+The upstream 4.4 prefix list misses symbols this fork introduces:
+anon_ksu_*, do_ksu_*, setup_ksu_cred, is_task_ksu_domain and
+throne_tracker*. Hide them too.
+---
+ kernel/kallsyms.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/kernel/kallsyms.c b/kernel/kallsyms.c
+index 1c6f5146eab..980bcd260ad 100644
+--- a/kernel/kallsyms.c
++++ b/kernel/kallsyms.c
+@@ -555,9 +555,14 @@ static int s_show(struct seq_file *m, void *p)
+ 			susfs_starts_with(iter->name, "susfs_") ||
+ 			susfs_starts_with(iter->name, "ksud") ||
+ 			susfs_starts_with(iter->name, "is_ksu_") ||
++			susfs_starts_with(iter->name, "is_task_ksu_") ||
+ 			susfs_starts_with(iter->name, "is_manager_") ||
+ 			susfs_starts_with(iter->name, "escape_to_") ||
+ 			susfs_starts_with(iter->name, "setup_selinux") ||
++			susfs_starts_with(iter->name, "setup_ksu_") ||
++			susfs_starts_with(iter->name, "anon_ksu_") ||
++			susfs_starts_with(iter->name, "do_ksu_") ||
++			susfs_starts_with(iter->name, "throne_tracker") ||
+ 			susfs_starts_with(iter->name, "track_throne") ||
+ 			susfs_starts_with(iter->name, "on_post_fs_data") ||
+ 			susfs_starts_with(iter->name, "try_umount") ||
+-- 
+2.43.0
+
