@@ -1,0 +1,162 @@
+From 443a7c61f0c04ec60090c066251aa044643636bc Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 12:23:57 +0000
+Subject: [PATCH 2/2] kernelsu: wire susfs stage 0 into the reboot supercall
+
+ksu_susfs talks to the kernel with reboot(KSU_INSTALL_MAGIC1, SUSFS_MAGIC,
+cmd, &info). Handle SUSFS_MAGIC from root callers in ksu_handle_sys_reboot()
+before the toolkit path, for the commands stage 0 builds: set_uname,
+set_cmdline_or_bootconfig, enable_log, enable_avc_log_spoofing and the
+show queries. Call susfs_init() from kernelsu_init().
+
+Kconfig only exposes the options already ported to this tree, so an
+unported feature cannot be switched on and fail at link time. Enable them
+in lineageos_a37f_defconfig.
+---
+ arch/arm64/configs/lineageos_a37f_defconfig |  5 +++
+ drivers/kernelsu/Kconfig                    | 35 +++++++++++++++++
+ drivers/kernelsu/ksu.c                      |  6 +++
+ drivers/kernelsu/supercall/supercall.c      | 43 +++++++++++++++++++++
+ 4 files changed, 89 insertions(+)
+
+diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
+index 6b0a9412a43..d914727a85a 100644
+--- a/arch/arm64/configs/lineageos_a37f_defconfig
++++ b/arch/arm64/configs/lineageos_a37f_defconfig
+@@ -883,3 +883,8 @@ CONFIG_KSU=y
+ # CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
+ CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+ CONFIG_KSU_LSM_SECURITY_HOOKS=y
++# SUSFS (stage 0: core + uname/cmdline spoof + log)
++CONFIG_KSU_SUSFS=y
++CONFIG_KSU_SUSFS_SPOOF_UNAME=y
++CONFIG_KSU_SUSFS_ENABLE_LOG=y
++CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
+index 45e09d1faf1..bd1ad539d10 100644
+--- a/drivers/kernelsu/Kconfig
++++ b/drivers/kernelsu/Kconfig
+@@ -131,3 +131,38 @@ config KSU_HEURISTIC_IN_TREE_BUILD
+ 	default y
+ 
+ endmenu
++
++menu "KernelSU - SUSFS"
++# Only the features already ported to this 3.10 tree are exposed here. The
++# rest (sus_path, sus_mount, sus_kstat, sus_map, open_redirect, symbol hiding)
++# need VFS hooks that are not in yet; they get their option when ported.
++
++config KSU_SUSFS
++	bool "KernelSU addon - SUSFS"
++	depends on KSU
++	default y
++	help
++	  Patch and enable SUSFS to kernel with KernelSU.
++
++config KSU_SUSFS_SPOOF_UNAME
++	bool "Enable to spoof uname"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Spoof the release and version fields returned by uname(2).
++
++config KSU_SUSFS_ENABLE_LOG
++	bool "Enable logging susfs log to kernel"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Log susfs events to dmesg; can be toggled at runtime with ksu_susfs.
++
++config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
++	bool "Spoof /proc/cmdline or /proc/bootconfig"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Spoof the output of /proc/cmdline.
++
++endmenu
+diff --git a/drivers/kernelsu/ksu.c b/drivers/kernelsu/ksu.c
+index 06df055bb1e..18294d91feb 100644
+--- a/drivers/kernelsu/ksu.c
++++ b/drivers/kernelsu/ksu.c
+@@ -239,6 +239,9 @@ static int __init kernelsu_init(void)
+ 	ksu_feature_init();
+ 
+ 	ksu_supercalls_init();
++#ifdef CONFIG_KSU_SUSFS
++	susfs_init();
++#endif
+ 
+ 	ksu_sucompat_init(); // so the feature is registered
+ 
+@@ -287,6 +290,9 @@ device_initcall(kernelsu_init);
+ char ksu_block_modules[256];
+ module_param_string(block_modules, ksu_block_modules, sizeof(ksu_block_modules), 0);
+ #include "downstream/module_blacklist.h"
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#endif
+ #else
+ #define ksu_extend_module_blacklist() do { } while (0)
+ #endif
+diff --git a/drivers/kernelsu/supercall/supercall.c b/drivers/kernelsu/supercall/supercall.c
+index 59ec582f5d2..ecbe50e8fe9 100644
+--- a/drivers/kernelsu/supercall/supercall.c
++++ b/drivers/kernelsu/supercall/supercall.c
+@@ -1,3 +1,8 @@
++#ifdef CONFIG_KSU_SUSFS
++#include <linux/susfs.h>
++#include <linux/susfs_def.h>
++#endif
++
+ #define KSU_DRIVER_PERMISSION_SU_SESSION (1UL << 0)
+ 
+ struct ksu_driver_context {
+@@ -106,6 +111,44 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+ 		return 0;
+ 	}
+ 
++#ifdef CONFIG_KSU_SUSFS
++	// susfs: ksu_susfs issues reboot(KSU_INSTALL_MAGIC1, SUSFS_MAGIC, cmd, &info)
++	if (magic2 == SUSFS_MAGIC && __kuid_val(current_cred()->uid) == 0) {
++		switch (cmd) {
++#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
++		case CMD_SUSFS_SET_UNAME:
++			susfs_set_uname(arg);
++			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_ENABLE_LOG
++		case CMD_SUSFS_ENABLE_LOG:
++			susfs_enable_log(arg);
++			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
++		case CMD_SUSFS_SET_CMDLINE_OR_BOOTCONFIG:
++			susfs_set_cmdline_or_bootconfig(arg);
++			return 0;
++#endif
++		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
++			susfs_set_avc_log_spoofing(arg);
++			return 0;
++		case CMD_SUSFS_SHOW_ENABLED_FEATURES:
++			susfs_get_enabled_features(arg);
++			return 0;
++		case CMD_SUSFS_SHOW_VARIANT:
++			susfs_show_variant(arg);
++			return 0;
++		case CMD_SUSFS_SHOW_VERSION:
++			susfs_show_version(arg);
++			return 0;
++		default:
++			pr_info("susfs: unsupported cmd: 0x%x\n", cmd);
++			return 0;
++		}
++	}
++#endif
++
+ 	toolkit_handle_sys_reboot(magic1, magic2, cmd, arg);
+ 	return 0;
+ }
+-- 
+2.43.0
+
