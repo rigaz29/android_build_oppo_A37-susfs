@@ -28,8 +28,12 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 
 ## Base
 
-- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `00a7a53`
-  (KernelSU backslashxx v3.3.0-48, 32649, syscall-table hooks)
+- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `34007f3`
+  (KernelSU backslashxx v3.3.0-48, 32649, syscall-table hooks, plus a
+  fix marking modules mounted on post-fs-data: backslashxx ksud never
+  sends EVENT_MODULE_MOUNTED on its own, which left `ksu_module_mounted`
+  false and kernel_umount dead. That is a fork bug, not a susfs one, so
+  it lives in the base branch, outside the susfs patch series.)
 - susfs: v2.3.0, kernel side from the JackA1ltman 4.4 patch
 - Userspace: `ksu_susfs` from susfs4ksu `gki-android12-5.10` @ `f3b5aec`
   (`ksu_module_susfs/tools/ksu_susfs_arm64`)
@@ -39,7 +43,7 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 On top of `wip/kernelsu`:
 
 ```sh
-git checkout -b wip/susfs 00a7a53
+git checkout -b wip/susfs 34007f3
 git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
