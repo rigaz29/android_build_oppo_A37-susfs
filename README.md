@@ -21,7 +21,7 @@ The kernel code lives in
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | done, verified on device |
-| 3 | `sus_path` (hide files/dirs), sdcard monitor | done, build-verified, needs on-device test |
+| 3 | `sus_path` (hide files/dirs), sdcard monitor | done, verified on device (monitor + registration); hiding path needs app+module test |
 
 Each stage gets its own Kconfig option. Only options that are already ported
 are defined, so an unported feature cannot be enabled and fail at link time.
@@ -214,7 +214,10 @@ results come back through `info.err`.
 - 3.10's `fsnotify_ops.handle_event` receives a `struct fsnotify_event *`
   instead of the split `mask`/`data`/`file_name` arguments, so the sdcard
   handler is written against the 3.10 API; `SUSFS_DECL_FSNOTIFY_OPS` only
-  covers 4.3+ and is not used here.
+  covers 4.3+ and is not used here. 3.10's `send_to_group()` also calls
+  `ops->should_send_event()` unconditionally, so the ops provide it; the
+  first iteration left it NULL and panicked on the first `/data/media/0`
+  event after `boot_complete` (found and fixed on device via pstore).
 - The sdcard monitor and extra works need `setup_selinux()` and `ksu_cred`;
   both exist in the backslashxx fork since the 3.3.0-48 update.
 
