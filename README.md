@@ -21,7 +21,7 @@ The kernel code lives in
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | done, verified on device |
-| 3 | `sus_path` (hide files/dirs), sdcard monitor | todo |
+| 3 | `sus_path` (hide files/dirs), sdcard monitor | done, build-verified, needs on-device test |
 
 Each stage gets its own Kconfig option. Only options that are already ported
 are defined, so an unported feature cannot be enabled and fail at link time.
@@ -43,6 +43,7 @@ git checkout -b wip/susfs 00a7a53
 git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
+git am patches/stage3/*.patch
 ```
 
 `lineageos_a37f_defconfig` is updated by the series:
@@ -55,6 +56,7 @@ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 CONFIG_KSU_SUSFS_SUS_MOUNT=y
 CONFIG_KSU_SUSFS_SUS_KSTAT=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
+CONFIG_KSU_SUSFS_SUS_PATH=y
 ```
 
 Install the tool as `/data/adb/ksu/bin/ksu_susfs` (0755). Then, as root:
@@ -103,6 +105,19 @@ fdinfo stop spoofing until `add_sus_kstat` is run again. The maps spoof
 (ino/dev) does not depend on the mark, only on the hash entry. In practice
 module scripts register after the file is in place and the daemon holds it
 open; on this 3.10 port this matches upstream susfs4ksu behaviour.
+
+Stage 3 (`sus_path`) hides files and directories from umounted app
+processes (marked `TIF_KSU_UNMOUNTABLE`, uid >= 10000):
+
+```sh
+ksu_susfs add_sus_path /path/to/hide            # hide from lookups and readdir
+ksu_susfs add_sus_path_loop /path/on/sus/mount  # re-mark after kernel_umount
+```
+
+`susfs_is_inode_sus_path()` gates on the umounted flag, so su shells and
+non-umounted apps still see the files. The `/sdcard` decryption monitor
+starts on `boot_complete` and disables the early-boot mount checks once
+`/data/media/0/Android` appears.
 
 ## How commands reach the kernel
 
@@ -179,6 +194,29 @@ results come back through `info.err`.
 - `kernel_umount.c` sets `TIF_KSU_UNMOUNTABLE` whenever SUSFS is enabled
   (not only under `KSU_HOSTSREDIRECT`), otherwise `sus_map` and the
   fdinfo/statfs spoofs for umounted apps never trigger on this fork.
+
+### Stage 3 (sus_path)
+
+- `struct nameidata` has no `state` field and 3.10 has no
+  `set_nameidata()`; the field is zeroed in `path_init()`.
+- `lookup_fast()` takes a path/inode out pair here; the RCU branch hook
+  drops the dentry via `goto unlazy` (no `dput`, `__d_lookup_rcu` holds no
+  reference), the ref-walk branch `dput`s it.
+- 3.10's `lookup_slow()` goes straight to `__lookup_hash()` and cannot
+  express a NULL dentry (4.4 returns NULL from `lookup_dcache()`), so the
+  ungated hide lives in `lookup_slow()` after the dentry materializes and
+  in `lookup_open()` for the open path.
+- `link_path_walk()` has no `OK:` label; the walk-in check goes after the
+  `nested_symlink()` block, before `can_lookup()`.
+- `lookup_last()` keeps its 3.10 `path` argument.
+- readdir: `filldir`/`filldir64` keep 3.10's `put_user(d_off)` ordering;
+  the `ilookup()` skip is placed before emitting the entry, as in 4.4.
+- 3.10's `fsnotify_ops.handle_event` receives a `struct fsnotify_event *`
+  instead of the split `mask`/`data`/`file_name` arguments, so the sdcard
+  handler is written against the 3.10 API; `SUSFS_DECL_FSNOTIFY_OPS` only
+  covers 4.3+ and is not used here.
+- The sdcard monitor and extra works need `setup_selinux()` and `ksu_cred`;
+  both exist in the backslashxx fork since the 3.3.0-48 update.
 
 ## Known issue: do not spoof uname to 4.4 or later
 

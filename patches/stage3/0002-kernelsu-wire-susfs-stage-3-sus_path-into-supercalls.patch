@@ -1,0 +1,129 @@
+From 306da1611b655d7181f7d342371d8d2a0db36112 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 15:50:40 +0000
+Subject: [PATCH 2/2] kernelsu: wire susfs stage 3 (sus_path) into supercalls
+ and boot
+
+Handle CMD_SUSFS_ADD_SUS_PATH and CMD_SUSFS_ADD_SUS_PATH_LOOP from
+root callers. Start the /sdcard decryption fsnotify monitor when the
+manager signals boot_complete, and schedule the sus_path re-marking
+loop after kernel_umount, matching upstream ksu_handle_extra_susfs_work().
+Expose CONFIG_KSU_SUSFS_SUS_PATH and enable it in
+lineageos_a37f_defconfig.
+---
+ arch/arm64/configs/lineageos_a37f_defconfig |  3 ++-
+ drivers/kernelsu/Kconfig                    | 11 ++++++++++-
+ drivers/kernelsu/feature/kernel_umount.c    |  8 ++++++++
+ drivers/kernelsu/supercall/dispatch.c       |  8 ++++++++
+ drivers/kernelsu/supercall/supercall.c      |  8 ++++++++
+ 5 files changed, 36 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
+index aeea2ab10c6..2db9fc52b78 100644
+--- a/arch/arm64/configs/lineageos_a37f_defconfig
++++ b/arch/arm64/configs/lineageos_a37f_defconfig
+@@ -883,7 +883,7 @@ CONFIG_KSU=y
+ # CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
+ CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+ CONFIG_KSU_LSM_SECURITY_HOOKS=y
+-# SUSFS (stage 0: core + uname/cmdline spoof + log; stage 1: sus_mount; stage 2: sus_kstat + sus_map)
++# SUSFS (stage 0: core; stage 1: sus_mount; stage 2: sus_kstat + sus_map; stage 3: sus_path)
+ CONFIG_KSU_SUSFS=y
+ CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+ CONFIG_KSU_SUSFS_ENABLE_LOG=y
+@@ -891,3 +891,4 @@ CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+ CONFIG_KSU_SUSFS_SUS_MOUNT=y
+ CONFIG_KSU_SUSFS_SUS_KSTAT=y
+ CONFIG_KSU_SUSFS_SUS_MAP=y
++CONFIG_KSU_SUSFS_SUS_PATH=y
+diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
+index 1936d0e0ce0..48fdaee863a 100644
+--- a/drivers/kernelsu/Kconfig
++++ b/drivers/kernelsu/Kconfig
+@@ -134,7 +134,7 @@ endmenu
+ 
+ menu "KernelSU - SUSFS"
+ # Only the features already ported to this 3.10 tree are exposed here. The
+-# rest (sus_path, open_redirect, symbol hiding)
++# rest (open_redirect, symbol hiding)
+ # need VFS hooks that are not in yet; they get their option when ported.
+ 
+ config KSU_SUSFS
+@@ -191,4 +191,13 @@ config KSU_SUSFS_SUS_MAP
+ 	  Hide VMAs and map_files entries of files marked with
+ 	  ksu_susfs add_sus_map for umounted app processes.
+ 
++config KSU_SUSFS_SUS_PATH
++	bool "Enable to hide files or directories"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Hide files/directories marked with ksu_susfs add_sus_path from
++	  path lookups and readdir of umounted app processes, plus the
++	  /sdcard decryption fsnotify monitor.
++
+ endmenu
+diff --git a/drivers/kernelsu/feature/kernel_umount.c b/drivers/kernelsu/feature/kernel_umount.c
+index 6381a33c9c6..fd80db61948 100644
+--- a/drivers/kernelsu/feature/kernel_umount.c
++++ b/drivers/kernelsu/feature/kernel_umount.c
+@@ -100,6 +100,14 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
+ 	}
+ 	up_read(&mount_list_lock);
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	// defer the sus_path re-marking loop to a workqueue, upstream parity
++	// with ksu_handle_extra_susfs_work()
++	extern struct work_struct susfs_extra_works;
++	if (!work_pending(&susfs_extra_works))
++		schedule_work(&susfs_extra_works);
++#endif
++
+ 	revert_creds(saved);
+ 
+ 	return 0;
+diff --git a/drivers/kernelsu/supercall/dispatch.c b/drivers/kernelsu/supercall/dispatch.c
+index fe628e38a0e..5cadbd0ffa9 100644
+--- a/drivers/kernelsu/supercall/dispatch.c
++++ b/drivers/kernelsu/supercall/dispatch.c
+@@ -1,3 +1,8 @@
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++// dispatch.c is #included by ksu.c before <linux/susfs.h>; declare it here.
++extern void susfs_start_sdcard_monitor_fn(void);
++#endif
++
+ static int do_grant_root(void __user *arg)
+ {
+ 	int ret;
+@@ -86,6 +91,9 @@ static int do_report_event(void __user *arg)
+ 			boot_complete_lock = true;
+ 			pr_info("boot_complete triggered\n");
+ 			on_boot_completed();
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++			susfs_start_sdcard_monitor_fn();
++#endif
+ 		}
+ 		break;
+ 	}
+diff --git a/drivers/kernelsu/supercall/supercall.c b/drivers/kernelsu/supercall/supercall.c
+index 4a5cb8a581a..ec5d2b7f8cf 100644
+--- a/drivers/kernelsu/supercall/supercall.c
++++ b/drivers/kernelsu/supercall/supercall.c
+@@ -148,6 +148,14 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+ 		case CMD_SUSFS_ADD_SUS_MAP:
+ 			susfs_add_sus_map(arg);
+ 			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		case CMD_SUSFS_ADD_SUS_PATH:
++			susfs_add_sus_path(arg);
++			return 0;
++		case CMD_SUSFS_ADD_SUS_PATH_LOOP:
++			susfs_add_sus_path_loop(arg);
++			return 0;
+ #endif
+ 		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
+ 			susfs_set_avc_log_spoofing(arg);
+-- 
+2.43.0
+

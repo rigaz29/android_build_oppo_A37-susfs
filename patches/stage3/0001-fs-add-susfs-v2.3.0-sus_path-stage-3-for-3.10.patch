@@ -1,0 +1,510 @@
+From b2061f0474218c4b7cff3055bfdf5656ec3bef0b Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 15:50:34 +0000
+Subject: [PATCH 1/2] fs: add susfs v2.3.0 sus_path, stage 3 for 3.10
+
+Port the file/dir hiding from the 4.4 non-GKI susfs patch to 3.10:
+path lookups skip inodes marked with add_sus_path and readdir drops
+their dirents, for umounted app processes only.
+
+3.10 adaptations:
+- struct nameidata has no state field and 3.10 has no set_nameidata();
+  add the field and zero it in path_init().
+- lookup_fast() takes a path/inode out pair here; the RCU branch hook
+  drops the dentry via goto unlazy (no dput, __d_lookup_rcu holds no
+  reference), the ref-walk branch dputs it.
+- 3.10's lookup_slow() goes straight to __lookup_hash() and cannot
+  express a NULL dentry (4.4 returns NULL from lookup_dcache()), so
+  the ungated hide lives in lookup_slow() after the dentry is
+  materialized, and in lookup_open() for the open path.
+- link_path_walk() has no OK: label; the walk-in check goes after the
+  nested_symlink() block, before can_lookup().
+- lookup_last() keeps its 3.10 path argument.
+- readdir: filldir/filldir64 keep 3.10's put_user(d_off) ordering; the
+  ilookup() skip is placed where 4.4 has it, before emitting the entry.
+- The /sdcard fsnotify monitor is compiled for the first time. 3.10's
+  fsnotify_ops.handle_event receives a struct fsnotify_event* instead
+  of the split mask/data/file_name arguments, so the handler is
+  written for the 3.10 API; the SUSFS_DECL_FSNOTIFY_OPS macro only
+  covers 4.3+.
+
+The sdcard monitor and extra works use setup_selinux() and ksu_cred,
+both present in the backslashxx fork since the 3.3.0-48 update.
+---
+ fs/namei.c            |  69 ++++++++++++++++++++++-
+ fs/readdir.c          | 124 +++++++++++++++++++++++++++++++++++++++++-
+ fs/susfs.c            |  29 ++++++++++
+ include/linux/namei.h |   3 +
+ 4 files changed, 221 insertions(+), 4 deletions(-)
+
+diff --git a/fs/namei.c b/fs/namei.c
+index 0e41f85353a..cb137777b02 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -36,10 +36,17 @@
+ #include <linux/posix_acl.h>
+ #include <linux/hash.h>
+ #include <asm/uaccess.h>
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++#include <linux/susfs_def.h>
++#endif
+ 
+ #include "internal.h"
+ #include "mount.h"
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++extern bool susfs_is_inode_sus_path(struct inode *inode);
++#endif
++
+ /* [Feb-1997 T. Schoebel-Theuer]
+  * Fundamental changes in the pathname lookup mechanisms (namei)
+  * were necessary because of omirr.  The reason is that omirr needs
+@@ -1436,6 +1443,15 @@ static int lookup_fast(struct nameidata *nd,
+ 		dentry = __d_lookup_rcu(parent, &nd->last, &seq, nd->inode);
+ 		if (!dentry)
+ 			goto unlazy;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		if ((nd->state & (ND_STATE_LOOKUP_LAST | ND_STATE_OPEN_LAST)) &&
++			dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode))
++		{
++			// no dput() here, __d_lookup_rcu() does not take a reference
++			dentry = NULL;
++			goto unlazy;
++		}
++#endif
+ 
+ 		/*
+ 		 * This sequence count validates that the inode matches
+@@ -1476,6 +1492,14 @@ unlazy:
+ 			return -ECHILD;
+ 	} else {
+ 		dentry = __d_lookup(parent, &nd->last);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		if ((nd->state & (ND_STATE_LOOKUP_LAST | ND_STATE_OPEN_LAST)) &&
++			dentry && dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode))
++		{
++			dput(dentry);
++			dentry = NULL;
++		}
++#endif
+ 	}
+ 
+ 	if (unlikely(!dentry))
+@@ -1524,6 +1548,15 @@ static int lookup_slow(struct nameidata *nd, struct path *path)
+ 	mutex_unlock(&parent->d_inode->i_mutex);
+ 	if (IS_ERR(dentry))
+ 		return PTR_ERR(dentry);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	// 4.4 hides here via lookup_dcache() returning NULL; 3.10's
++	// lookup_slow() goes straight to __lookup_hash(), so hide after the
++	// dentry is materialized. Ungated, matching the 4.4 lookup_dcache hook.
++	if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
++		dput(dentry);
++		return -ENOENT;
++	}
++#endif
+ 	path->mnt = nd->path.mnt;
+ 	path->dentry = dentry;
+ 	err = follow_managed(path, nd->flags);
+@@ -1608,7 +1641,11 @@ static inline int walk_component(struct nameidata *nd, struct path *path,
+ 	if (unlikely(err)) {
+ 		if (err < 0)
+ 			goto out_err;
+-
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		if (nd->state & ND_STATE_LOOKUP_LAST) {
++			nd->flags |= ND_FLAGS_LOOKUP_LAST;
++		}
++#endif
+ 		err = lookup_slow(nd, path);
+ 		if (err < 0)
+ 			goto out_err;
+@@ -1901,6 +1938,16 @@ static int link_path_walk(const char *name, struct nameidata *nd)
+ 			if (err)
+ 				return err;
+ 		}
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++		{
++			struct dentry *dentry = nd->path.dentry;
++			if (dentry->d_inode && susfs_is_inode_sus_path(dentry->d_inode)) {
++				// - No need to dput() here
++				// - return -ENOENT here since it is walking the sub path of sus path
++				return -ENOENT;
++			}
++		}
++#endif
+ 		if (!can_lookup(nd->inode)) {
+ 			err = -ENOTDIR; 
+ 			break;
+@@ -1918,6 +1965,9 @@ static int path_init(int dfd, const char *name, unsigned int flags,
+ 	nd->last_type = LAST_ROOT; /* if there are only slashes... */
+ 	nd->flags = flags | LOOKUP_JUMPED;
+ 	nd->depth = 0;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	nd->state = 0;
++#endif
+ 	if (flags & LOOKUP_ROOT) {
+ 		struct inode *inode = nd->root.dentry->d_inode;
+ 		struct vfsmount *mnt = nd->root.mnt;
+@@ -2000,6 +2050,9 @@ static int path_init(int dfd, const char *name, unsigned int flags,
+ 
+ static inline int lookup_last(struct nameidata *nd, struct path *path)
+ {
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	nd->state |= ND_STATE_LOOKUP_LAST;
++#endif
+ 	if (nd->last_type == LAST_NORM && nd->last.name[nd->last.len])
+ 		nd->flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
+ 
+@@ -2723,6 +2776,17 @@ static int lookup_open(struct nameidata *nd, struct path *path,
+ 	if (IS_ERR(dentry))
+ 		return PTR_ERR(dentry);
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	// 3.10's lookup_dcache() cannot return NULL (its callers cannot
++	// express "hidden"), so the ungated 4.4 hide lives here for the
++	// open path; lookup_slow() has its own hook.
++	if (!need_lookup && dentry && dentry->d_inode &&
++		susfs_is_inode_sus_path(dentry->d_inode)) {
++		dput(dentry);
++		return -ENOENT;
++	}
++#endif
++
+ 	/* Cached positive dentry: will open in f_op->open */
+ 	if (!need_lookup && dentry->d_inode)
+ 		goto out_no_open;
+@@ -2795,6 +2859,9 @@ static int do_last(struct nameidata *nd, struct path *path,
+ 
+ 	nd->flags &= ~LOOKUP_PARENT;
+ 	nd->flags |= op->intent;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	nd->state |= ND_STATE_OPEN_LAST;
++#endif
+ 
+ 	if (nd->last_type != LAST_NORM) {
+ 		error = handle_dots(nd, nd->last_type);
+diff --git a/fs/readdir.c b/fs/readdir.c
+index d46eca8567a..cda968bc07f 100644
+--- a/fs/readdir.c
++++ b/fs/readdir.c
+@@ -17,6 +17,11 @@
+ #include <linux/security.h>
+ #include <linux/syscalls.h>
+ #include <linux/unistd.h>
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++#include <linux/susfs_def.h>
++extern int susfs_get_data_path(struct path *path);
++extern bool susfs_is_inode_sus_path(struct inode *inode);
++#endif
+ 
+ #include <asm/uaccess.h>
+ 
+@@ -74,6 +79,9 @@ struct old_linux_dirent {
+ struct readdir_callback {
+ 	struct dir_context ctx;
+ 	struct old_linux_dirent __user * dirent;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct super_block *sb;
++#endif
+ 	int result;
+ };
+ 
+@@ -83,6 +91,9 @@ static int fillonedir(void * __buf, const char * name, int namlen, loff_t offset
+ 	struct readdir_callback *buf = (struct readdir_callback *) __buf;
+ 	struct old_linux_dirent __user * dirent;
+ 	unsigned long d_ino;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct inode *inode;
++#endif
+ 
+ 	if (buf->result)
+ 		return -EINVAL;
+@@ -91,6 +102,18 @@ static int fillonedir(void * __buf, const char * name, int namlen, loff_t offset
+ 		buf->result = -EOVERFLOW;
+ 		return -EOVERFLOW;
+ 	}
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	inode = ilookup(buf->sb, ino);
++	if (!inode) {
++		goto orig_flow;
++	}
++	if (susfs_is_inode_sus_path(inode)) {
++		iput(inode);
++		return 0;
++	}
++	iput(inode);
++orig_flow:
++#endif
+ 	buf->result++;
+ 	dirent = buf->dirent;
+ 	if (!access_ok(VERIFY_WRITE, dirent,
+@@ -118,15 +141,35 @@ SYSCALL_DEFINE3(old_readdir, unsigned int, fd,
+ 		.ctx.actor = fillonedir,
+ 		.dirent = dirent
+ 	};
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	int path_err = -EINVAL;
++	struct path path;
++#endif
+ 
+ 	if (!f.file)
+ 		return -EBADF;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (f.file->f_inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
++		path_err = susfs_get_data_path(&path);
++		if (!path_err) {
++			buf.sb = path.dentry->d_inode->i_sb;
++			goto orig_flow;
++		}
++	}
++	buf.sb = f.file->f_inode->i_sb;
++
++orig_flow:
++#endif
+ 	error = iterate_dir(f.file, &buf.ctx);
+ 	if (buf.result)
+ 		error = buf.result;
+ 
+ 	fdput(f);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (!path_err)
++		path_put(&path);
++#endif
+ 	return error;
+ }
+ 
+@@ -146,6 +189,9 @@ struct linux_dirent {
+ struct getdents_callback {
+ 	struct dir_context ctx;
+ 	struct linux_dirent __user * current_dir;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct super_block *sb;
++#endif
+ 	struct linux_dirent __user * previous;
+ 	int count;
+ 	int error;
+@@ -159,6 +205,9 @@ static int filldir(void * __buf, const char * name, int namlen, loff_t offset,
+ 	unsigned long d_ino;
+ 	int reclen = ALIGN(offsetof(struct linux_dirent, d_name) + namlen + 2,
+ 		sizeof(long));
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct inode *inode;
++#endif
+ 
+ 	buf->error = -EINVAL;	/* only used if we fail.. */
+ 	if (reclen > buf->count)
+@@ -173,6 +222,18 @@ static int filldir(void * __buf, const char * name, int namlen, loff_t offset,
+ 		if (__put_user(offset, &dirent->d_off))
+ 			goto efault;
+ 	}
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	inode = ilookup(buf->sb, ino);
++	if (!inode) {
++		goto orig_flow;
++	}
++	if (susfs_is_inode_sus_path(inode)) {
++		iput(inode);
++		return 0;
++	}
++	iput(inode);
++orig_flow:
++#endif
+ 	dirent = buf->current_dir;
+ 	if (__put_user(d_ino, &dirent->d_ino))
+ 		goto efault;
+@@ -205,6 +266,10 @@ SYSCALL_DEFINE3(getdents, unsigned int, fd,
+ 		.current_dir = dirent
+ 	};
+ 	int error;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	int path_err = -EINVAL;
++	struct path path;
++#endif
+ 
+ 	if (!access_ok(VERIFY_WRITE, dirent, count))
+ 		return -EFAULT;
+@@ -213,35 +278,56 @@ SYSCALL_DEFINE3(getdents, unsigned int, fd,
+ 	if (!f.file)
+ 		return -EBADF;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (f.file->f_inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
++		path_err = susfs_get_data_path(&path);
++		if (!path_err) {
++			buf.sb = path.dentry->d_inode->i_sb;
++			goto orig_flow;
++		}
++	}
++	buf.sb = f.file->f_inode->i_sb;
++
++orig_flow:
++#endif
+ 	error = iterate_dir(f.file, &buf.ctx);
+ 	if (error >= 0)
+ 		error = buf.error;
+-	lastdirent = buf.previous;
+-	if (lastdirent) {
++	if (buf.previous) {
+ 		if (put_user(buf.ctx.pos, &lastdirent->d_off))
+ 			error = -EFAULT;
+ 		else
+ 			error = count - buf.count;
+ 	}
+ 	fdput(f);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (!path_err)
++		path_put(&path);
++#endif
+ 	return error;
+ }
+ 
+ struct getdents_callback64 {
+ 	struct dir_context ctx;
+ 	struct linux_dirent64 __user * current_dir;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct super_block *sb;
++#endif
+ 	struct linux_dirent64 __user * previous;
+ 	int count;
+ 	int error;
+ };
+ 
+ static int filldir64(void * __buf, const char * name, int namlen, loff_t offset,
+-		     u64 ino, unsigned int d_type)
++		   u64 ino, unsigned int d_type)
+ {
+ 	struct linux_dirent64 __user *dirent;
+ 	struct getdents_callback64 * buf = (struct getdents_callback64 *) __buf;
+ 	int reclen = ALIGN(offsetof(struct linux_dirent64, d_name) + namlen + 1,
+ 		sizeof(u64));
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	struct inode *inode;
++#endif
+ 
+ 	buf->error = -EINVAL;	/* only used if we fail.. */
+ 	if (reclen > buf->count)
+@@ -251,6 +337,18 @@ static int filldir64(void * __buf, const char * name, int namlen, loff_t offset,
+ 		if (__put_user(offset, &dirent->d_off))
+ 			goto efault;
+ 	}
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	inode = ilookup(buf->sb, ino);
++	if (!inode) {
++		goto orig_flow;
++	}
++	if (susfs_is_inode_sus_path(inode)) {
++		iput(inode);
++		return 0;
++	}
++	iput(inode);
++orig_flow:
++#endif
+ 	dirent = buf->current_dir;
+ 	if (__put_user(ino, &dirent->d_ino))
+ 		goto efault;
+@@ -285,6 +383,10 @@ SYSCALL_DEFINE3(getdents64, unsigned int, fd,
+ 		.current_dir = dirent
+ 	};
+ 	int error;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	int path_err = -EINVAL;
++	struct path path;
++#endif
+ 
+ 	if (!access_ok(VERIFY_WRITE, dirent, count))
+ 		return -EFAULT;
+@@ -293,6 +395,18 @@ SYSCALL_DEFINE3(getdents64, unsigned int, fd,
+ 	if (!f.file)
+ 		return -EBADF;
+ 
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (f.file->f_inode->i_sb->s_magic == FUSE_SUPER_MAGIC) {
++		path_err = susfs_get_data_path(&path);
++		if (!path_err) {
++			buf.sb = path.dentry->d_inode->i_sb;
++			goto orig_flow;
++		}
++	}
++	buf.sb = f.file->f_inode->i_sb;
++
++orig_flow:
++#endif
+ 	error = iterate_dir(f.file, &buf.ctx);
+ 	if (error >= 0)
+ 		error = buf.error;
+@@ -305,5 +419,9 @@ SYSCALL_DEFINE3(getdents64, unsigned int, fd,
+ 			error = count - buf.count;
+ 	}
+ 	fdput(f);
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	if (!path_err)
++		path_put(&path);
++#endif
+ 	return error;
+ }
+diff --git a/fs/susfs.c b/fs/susfs.c
+index f67e1000bab..bbd81bf0f90 100644
+--- a/fs/susfs.c
++++ b/fs/susfs.c
+@@ -1457,6 +1457,34 @@ static int watch_one_dir(struct watch_dir *wd)
+ 	return 0;
+ }
+ 
++#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
++/* 3.10 fsnotify: handle_event() receives a struct fsnotify_event * instead
++ * of the split mask/data/file_name arguments used by the 4.4+ macro. */
++static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
++					   struct fsnotify_mark *inode_mark,
++					   struct fsnotify_mark *vfsmount_mark,
++					   struct fsnotify_event *event)
++{
++	const unsigned char *file_name = event->file_name;
++	u32 mask = event->mask;
++
++	if (!file_name || strlen((const char *)file_name) != 7 ||
++	    memcmp(file_name, "Android", 7))
++		return 0;
++
++	if (test_and_set_bit(0, &sdcard_cleanup_scheduled))
++		return 0;
++
++	SUSFS_LOGI("'%s' detected, mask: 0x%x\n", SDCARD_ANDROID_PATH, mask);
++	SUSFS_LOGI("deferring cleanup for 5 seconds\n");
++	queue_delayed_work(system_unbound_wq, &sdcard_cleanup_dwork, 5 * HZ);
++	return 0;
++}
++
++static const struct fsnotify_ops fsnotify_ops = {
++	.handle_event = susfs_handle_sdcard_inode_event,
++};
++#else
+ /*
+  * fsnotify handler — runs inside an SRCU read section held by fsnotify().
+  * Must not block or call fsnotify_destroy_group() (which internally calls
+@@ -1485,6 +1513,7 @@ static const struct fsnotify_ops fsnotify_ops = {
+ 	.handle_event = susfs_handle_sdcard_inode_event,
+ #endif
+ };
++#endif
+ 
+ static void __maybe_unused m_free(struct fsnotify_mark *m)
+ {
+diff --git a/include/linux/namei.h b/include/linux/namei.h
+index f10c7f29f5e..2d5c5e6cb0a 100644
+--- a/include/linux/namei.h
++++ b/include/linux/namei.h
+@@ -16,6 +16,9 @@ struct nameidata {
+ 	struct path	root;
+ 	struct inode	*inode; /* path.dentry.d_inode */
+ 	unsigned int	flags;
++#ifdef CONFIG_KSU_SUSFS_SUS_PATH
++	unsigned int	state; /* susfs ND_STATE_ flags, zeroed in path_init */
++#endif
+ 	unsigned	seq;
+ 	int		last_type;
+ 	unsigned	depth;
+-- 
+2.43.0
+
