@@ -20,7 +20,7 @@ The kernel code lives in
 |---|---|---|
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
-| 2 | `sus_kstat`, `sus_map` | done, build-verified, needs on-device test |
+| 2 | `sus_kstat`, `sus_map` | done, verified on device |
 | 3 | `sus_path` (hide files/dirs), sdcard monitor | todo |
 
 Each stage gets its own Kconfig option. Only options that are already ported
@@ -96,6 +96,13 @@ The spoofs only apply to app processes (`uid % 100000 >= 10000`); `sus_map`
 additionally requires the reader to be marked umounted. `kernel_umount.c`
 now sets `TIF_KSU_UNMOUNTABLE` whenever SUSFS is enabled, so the marking
 works without `CONFIG_KSU_HOSTSREDIRECT`.
+
+Known caveat (upstream design): the `i_state` mark is in-memory only. If the
+inode is evicted from the icache before the file is re-opened, stat/statfs/
+fdinfo stop spoofing until `add_sus_kstat` is run again. The maps spoof
+(ino/dev) does not depend on the mark, only on the hash entry. In practice
+module scripts register after the file is in place and the daemon holds it
+open; on this 3.10 port this matches upstream susfs4ksu behaviour.
 
 ## How commands reach the kernel
 
