@@ -22,7 +22,7 @@ The kernel code lives in
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | done, verified on device |
 | 3 | `sus_path` (hide files/dirs), sdcard monitor | done, verified on device (monitor + registration); hiding path needs app+module test |
-| 4 | `open_redirect`, symbol hiding, avc log spoofing | done, build-verified, needs on-device test |
+| 4 | `open_redirect`, symbol hiding, avc log spoofing | done, verified on device |
 
 Each stage gets its own Kconfig option. Only options that are already ported
 are defined, so an unported feature cannot be enabled and fail at link time.
