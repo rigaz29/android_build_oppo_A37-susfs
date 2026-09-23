@@ -19,7 +19,7 @@ The kernel code lives in
 | Stage | Features | Status |
 |---|---|---|
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
-| 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | todo |
+| 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, build-verified, needs on-device test |
 | 2 | `sus_kstat`, `sus_map` | todo |
 | 3 | `sus_path` (hide files/dirs), sdcard monitor | todo |
 
@@ -41,6 +41,7 @@ On top of `wip/kernelsu`:
 ```sh
 git checkout -b wip/susfs 00a7a53
 git am patches/stage0/*.patch
+git am patches/stage1/*.patch
 ```
 
 `lineageos_a37f_defconfig` is updated by the series:
@@ -50,6 +51,7 @@ CONFIG_KSU_SUSFS=y
 CONFIG_KSU_SUSFS_SPOOF_UNAME=y
 CONFIG_KSU_SUSFS_ENABLE_LOG=y
 CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
+CONFIG_KSU_SUSFS_SUS_MOUNT=y
 ```
 
 Install the tool as `/data/adb/ksu/bin/ksu_susfs` (0755). Then, as root:
@@ -57,8 +59,21 @@ Install the tool as `/data/adb/ksu/bin/ksu_susfs` (0755). Then, as root:
 ```sh
 ksu_susfs show version            # v2.3.0
 ksu_susfs show variant            # NON-GKI
-ksu_susfs show enabled_features
+ksu_susfs show enabled_features   # includes CONFIG_KSU_SUSFS_SUS_MOUNT
+ksu_susfs hide_sus_mnts_for_non_su_procs 1   # stage 1
 ```
+
+Stage 1 has no per-mount command: every mount created or cloned while the
+caller is in the su domain automatically gets a fake `mnt_id` from
+`DEFAULT_KSU_MNT_ID` (2000000000) on. `hide_sus_mnts_for_non_su_procs 1`
+makes `/proc/mounts`, `/proc/<pid>/mountinfo` and `/proc/<pid>/mountstats`
+skip those mounts for every process outside the su domain (enabled at boot
+in post-fs-data by the module scripts, then left on).
+
+Note: with `CONFIG_KSU_HOSTSREDIRECT` off in this tree, KernelSU's
+kernel_umount really unmounts for apps instead of just marking them; the
+`__lookup_mnt` spoof for `TIF_KSU_UNMOUNTABLE` processes is ported anyway
+and activates if that option is ever turned on.
 
 ## How commands reach the kernel
 
@@ -85,6 +100,26 @@ results come back through `info.err`.
   depend on KernelSU internals this fork lacks (`setup_selinux`, `ksu_cred`).
   They build only with `CONFIG_KSU_SUSFS_SUS_PATH`, which lands in stage 3.
 - `supercall.c` has no includes of its own; it is `#include`d by `ksu.c`.
+
+### Stage 1 (sus_mount)
+
+- 3.10 has no `ida_simple_get()`; the fake mnt_id allocator uses the
+  `ida_pre_get()` + `ida_get_new_above()` dance and never bumps
+  `mnt_id_start`, so normal mount ids stay in the low range.
+- The `alloc_vfsmnt()` copies keep 3.10's `mnt_fsnotify_marks` init and use
+  plain `kstrdup()` (`kstrdup_const` is 3.13+).
+- `__lookup_mnt()` iterates a `list_head` here (an hlist since 4.x); the sus
+  mount skip is folded into the list walk.
+- `CL_COPY_MNT_NS` is set in `dup_mnt_ns()` (4.4 calls it `copy_mnt_ns()`).
+- `susfs_is_current_ksu_domain()` maps to this fork's `is_ksu_domain()` SID
+  check (backslashxx has no susfs support of its own).
+- `susfs_is_current_proc_umounted()` maps to the fork's `TIF_KSU_UNMOUNTABLE`
+  flag; `susfs_def.h` defines it as 61 (64-bit) / 29 (32-bit), matching
+  `drivers/kernelsu/policy/app_profile.h`.
+- `VFSMOUNT_MNT_FLAGS_KSU_UNSHARED_MNT` is set right after the unshare alloc
+  in `clone_mnt()`, not only after the `mnt_flags` copy. Upstream 4.4 leaves
+  a window where an error path (`clone_mnt_data` failing, which sdcardfs
+  implements) would `ida_remove()` the borrowed id in `mnt_free_id()`.
 
 ## Known issue: do not spoof uname to 4.4 or later
 
