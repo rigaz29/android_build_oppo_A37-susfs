@@ -22,6 +22,7 @@ The kernel code lives in
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | done, verified on device |
 | 3 | `sus_path` (hide files/dirs), sdcard monitor | done, verified on device (monitor + registration); hiding path needs app+module test |
+| 4 | `open_redirect`, symbol hiding, avc log spoofing | done, build-verified, needs on-device test |
 
 Each stage gets its own Kconfig option. Only options that are already ported
 are defined, so an unported feature cannot be enabled and fail at link time.
@@ -48,6 +49,7 @@ git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
 git am patches/stage3/*.patch
+git am patches/stage4/*.patch
 ```
 
 `lineageos_a37f_defconfig` is updated by the series:
@@ -61,6 +63,8 @@ CONFIG_KSU_SUSFS_SUS_MOUNT=y
 CONFIG_KSU_SUSFS_SUS_KSTAT=y
 CONFIG_KSU_SUSFS_SUS_MAP=y
 CONFIG_KSU_SUSFS_SUS_PATH=y
+CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
+CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
 ```
 
 Install the tool as `/data/adb/ksu/bin/ksu_susfs` (0755). Then, as root:
@@ -102,6 +106,19 @@ The spoofs only apply to app processes (`uid % 100000 >= 10000`); `sus_map`
 additionally requires the reader to be marked umounted. `kernel_umount.c`
 now sets `TIF_KSU_UNMOUNTABLE` whenever SUSFS is enabled, so the marking
 works without `CONFIG_KSU_HOSTSREDIRECT`.
+
+Stage 4 adds the remaining optional features:
+
+```sh
+# apps opening <target> get <redirected> instead; uid_scheme 3 = umounted apps
+ksu_susfs add_open_redirect <target> <redirected> <uid_scheme>
+# uid_scheme: 1 = all non-su apps, 2 = root except su, 3 = non-su processes,
+#             4 = umounted apps, 5 = umounted processes
+ksu_susfs enable_avc_log_spoofing 1   # mask ksu denials in audit logs
+```
+
+Symbol hiding (`CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS`) is compile-time
+and drops `ksu_*`/`susfs_*` entries from `/proc/kallsyms`.
 
 Known caveat (upstream design): the `i_state` mark is in-memory only. If the
 inode is evicted from the icache before the file is re-opened, stat/statfs/
@@ -224,6 +241,31 @@ results come back through `info.err`.
   event after `boot_complete` (found and fixed on device via pstore).
 - The sdcard monitor and extra works need `setup_selinux()` and `ksu_cred`;
   both exist in the backslashxx fork since the 3.3.0-48 update.
+
+### Stage 4 (open_redirect, symbol hiding, avc log spoofing)
+
+- 3.10's `path_openat()` opens the file inside `do_last()` during the walk
+  (5.10 splits it into `open_last_lookups()`+`do_open()`), so the redirect
+  re-walk releases the first open via `fput()`+`get_empty_filp()` first;
+  otherwise `finish_open()` hits `BUG_ON(*opened & FILE_OPENED)`.
+- No `set_nameidata()`/`restore_nameidata()`; the re-walk calls
+  `path_init(dfd, fake->name, flags)` directly and drops the previous
+  `base` file ref first.
+- `do_tmpfile()` takes `dfd`/`pathname` here; the redirect redoes
+  `path_lookupat()` on the fake name after `path_put()` of the original.
+- `filename_lookup()` in 3.10 fills a `struct nameidata`, not a path.
+- `generic_readlink()` is `follow_link()`+`vfs_readlink()` based; the spoof
+  result is kept separate so a non-matching entry falls back to the real
+  link instead of returning `-ENOENT`.
+- 3.10 has no `show_vma_header_prefix()`; the maps spoof prints the header
+  inline as `show_map_vma()` itself does.
+- 3.10 has no `getname_kernel()`; `susfs_getname_kernel()` builds an
+  embedded `struct filename` the way `getname_flags()` does, so `putname()`
+  releases it correctly.
+- The avc hook lives in `avc_dump_query()` (3.10 still formats queries
+  there); `susfs_ksu_sid`/`susfs_priv_app_sid` are cached in `susfs_init()`
+  via `security_secctx_to_secid()`.
+
 
 ## Known issue: do not spoof uname to 4.4 or later
 

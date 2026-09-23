@@ -1,0 +1,87 @@
+From 08b0c09158a26f6b06aa9ff484a97d408cbb85b4 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 17:46:13 +0000
+Subject: [PATCH 2/2] kernelsu: wire susfs stage 4 (open_redirect, symbol
+ hiding) into supercalls
+
+Handle CMD_SUSFS_ADD_OPEN_REDIRECT from root callers. Expose
+CONFIG_KSU_SUSFS_OPEN_REDIRECT and CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
+and enable them in lineageos_a37f_defconfig.
+---
+ arch/arm64/configs/lineageos_a37f_defconfig |  4 +++-
+ drivers/kernelsu/Kconfig                    | 18 +++++++++++++++++-
+ drivers/kernelsu/supercall/supercall.c      |  5 +++++
+ 3 files changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
+index 2db9fc52b78..68d17784921 100644
+--- a/arch/arm64/configs/lineageos_a37f_defconfig
++++ b/arch/arm64/configs/lineageos_a37f_defconfig
+@@ -883,7 +883,7 @@ CONFIG_KSU=y
+ # CONFIG_KSU_HACK_ARM64_BRANCH_LINK is not set
+ CONFIG_KSU_TAMPER_SYSCALL_TABLE=y
+ CONFIG_KSU_LSM_SECURITY_HOOKS=y
+-# SUSFS (stage 0: core; stage 1: sus_mount; stage 2: sus_kstat + sus_map; stage 3: sus_path)
++# SUSFS (stages 0-3 + open_redirect + symbol hiding + avc log spoofing)
+ CONFIG_KSU_SUSFS=y
+ CONFIG_KSU_SUSFS_SPOOF_UNAME=y
+ CONFIG_KSU_SUSFS_ENABLE_LOG=y
+@@ -892,3 +892,5 @@ CONFIG_KSU_SUSFS_SUS_MOUNT=y
+ CONFIG_KSU_SUSFS_SUS_KSTAT=y
+ CONFIG_KSU_SUSFS_SUS_MAP=y
+ CONFIG_KSU_SUSFS_SUS_PATH=y
++CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
++CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
+diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
+index 48fdaee863a..f704b2d8ab8 100644
+--- a/drivers/kernelsu/Kconfig
++++ b/drivers/kernelsu/Kconfig
+@@ -134,7 +134,7 @@ endmenu
+ 
+ menu "KernelSU - SUSFS"
+ # Only the features already ported to this 3.10 tree are exposed here. The
+-# rest (open_redirect, symbol hiding)
++# everything shipped
+ # need VFS hooks that are not in yet; they get their option when ported.
+ 
+ config KSU_SUSFS
+@@ -200,4 +200,20 @@ config KSU_SUSFS_SUS_PATH
+ 	  path lookups and readdir of umounted app processes, plus the
+ 	  /sdcard decryption fsnotify monitor.
+ 
++config KSU_SUSFS_OPEN_REDIRECT
++	bool "Enable to spoof redirected file paths"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Redirect opens and readlinks of files marked with ksu_susfs
++	  add_open_redirect to a clean copy for app processes, and
++	  spoof their /proc/<pid>/maps entry.
++
++config KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS
++	bool "Enable to hide KernelSU and SUSFS symbols"
++	depends on KSU_SUSFS
++	default y
++	help
++	  Hide ksu_ and susfs_ symbols from /proc/kallsyms.
++
+ endmenu
+diff --git a/drivers/kernelsu/supercall/supercall.c b/drivers/kernelsu/supercall/supercall.c
+index ec5d2b7f8cf..1cf77003657 100644
+--- a/drivers/kernelsu/supercall/supercall.c
++++ b/drivers/kernelsu/supercall/supercall.c
+@@ -156,6 +156,11 @@ int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void __user
+ 		case CMD_SUSFS_ADD_SUS_PATH_LOOP:
+ 			susfs_add_sus_path_loop(arg);
+ 			return 0;
++#endif
++#ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
++		case CMD_SUSFS_ADD_OPEN_REDIRECT:
++			susfs_add_open_redirect(arg);
++			return 0;
+ #endif
+ 		case CMD_SUSFS_ENABLE_AVC_LOG_SPOOFING:
+ 			susfs_set_avc_log_spoofing(arg);
+-- 
+2.43.0
+
