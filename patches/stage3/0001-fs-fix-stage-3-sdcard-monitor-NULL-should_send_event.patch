@@ -1,0 +1,48 @@
+From c11f691ad75492c6cab5a5a39fea899ae2ad2f22 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Wed, 23 Sep 2026 15:59:56 +0000
+Subject: [PATCH] fs: fix stage 3 sdcard monitor NULL should_send_event on 3.10
+
+3.10's send_to_group() calls group->ops->should_send_event()
+unconditionally; the monitor ops left it NULL, so the first fsnotify
+event on /data/media/0 after boot_complete dereferenced NULL and
+panicked the device. Provide a 3.10 should_send_event() that lets
+every candidate through; the file name filter lives in handle_event().
+---
+ fs/susfs.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/fs/susfs.c b/fs/susfs.c
+index bbd81bf0f90..9904811fe39 100644
+--- a/fs/susfs.c
++++ b/fs/susfs.c
+@@ -1459,7 +1459,17 @@ static int watch_one_dir(struct watch_dir *wd)
+ 
+ #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
+ /* 3.10 fsnotify: handle_event() receives a struct fsnotify_event * instead
+- * of the split mask/data/file_name arguments used by the 4.4+ macro. */
++ * of the split mask/data/file_name arguments used by the 4.4+ macro.
++ * 3.10's send_to_group() also calls should_send_event() unconditionally,
++ * so it must be provided; the name filter lives in the handler. */
++static bool susfs_should_send_sdcard_event(struct fsnotify_group *group, struct inode *inode,
++					   struct fsnotify_mark *inode_mark,
++					   struct fsnotify_mark *vfsmount_mark,
++					   __u32 mask, void *data, int data_type)
++{
++	return true;
++}
++
+ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
+ 					   struct fsnotify_mark *inode_mark,
+ 					   struct fsnotify_mark *vfsmount_mark,
+@@ -1482,6 +1492,7 @@ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
+ }
+ 
+ static const struct fsnotify_ops fsnotify_ops = {
++	.should_send_event = susfs_should_send_sdcard_event,
+ 	.handle_event = susfs_handle_sdcard_inode_event,
+ };
+ #else
+-- 
+2.43.0
+
