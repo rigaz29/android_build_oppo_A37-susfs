@@ -29,12 +29,13 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 
 ## Base
 
-- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `34007f3`
-  (KernelSU backslashxx v3.3.0-48, 32649, syscall-table hooks, plus a
-  fix marking modules mounted on post-fs-data: backslashxx ksud never
-  sends EVENT_MODULE_MOUNTED on its own, which left `ksu_module_mounted`
-  false and kernel_umount dead. That is a fork bug, not a susfs one, so
-  it lives in the base branch, outside the susfs patch series.)
+- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `000cd62`
+  (KernelSU backslashxx v3.3.0-48, 32649, syscall-table hooks, no local
+  changes). In this fork ksud does not mount modules itself; a metamodule
+  does and then reports it with `ksud kernel notify-module-mounted`.
+  Without a metamodule `ksu_module_mounted` stays false and kernel_umount
+  has nothing to do, which is expected. susfs marks apps either way
+  (stage 4 0004).
 - susfs: v2.3.0, kernel side from the JackA1ltman 4.4 patch
 - Userspace: `ksu_susfs` from susfs4ksu `gki-android12-5.10` @ `f3b5aec`
   (`ksu_module_susfs/tools/ksu_susfs_arm64`)
@@ -44,7 +45,7 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 On top of `wip/kernelsu`:
 
 ```sh
-git checkout -b wip/susfs 34007f3
+git checkout -b wip/susfs 000cd62
 git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
@@ -83,10 +84,10 @@ makes `/proc/mounts`, `/proc/<pid>/mountinfo` and `/proc/<pid>/mountstats`
 skip those mounts for every process outside the su domain (enabled at boot
 in post-fs-data by the module scripts, then left on).
 
-Note: with `CONFIG_KSU_HOSTSREDIRECT` off in this tree, KernelSU's
-kernel_umount really unmounts for apps instead of just marking them; the
-`__lookup_mnt` spoof for `TIF_KSU_UNMOUNTABLE` processes is ported anyway
-and activates if that option is ever turned on.
+Note: `CONFIG_KSU_HOSTSREDIRECT` is off in this tree. The `__lookup_mnt`
+spoof still applies to every process marked `TIF_KSU_UNMOUNTABLE`, so
+marked apps walk past mounts with a fake `mnt_id` even when kernel_umount
+does not unmount them.
 
 Stage 2 (`sus_kstat`, `sus_map`) marks inodes from a root shell:
 
