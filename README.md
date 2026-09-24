@@ -21,7 +21,7 @@ The kernel code lives in
 | 0 | core, `set_uname`, `set_cmdline_or_bootconfig`, log, `show` | done, verified on device |
 | 1 | `sus_mount` (hide mounts in /proc/mounts, mountinfo) | done, verified on device |
 | 2 | `sus_kstat`, `sus_map` | done, verified on device |
-| 3 | `sus_path` (hide files/dirs), sdcard monitor | done, verified on device (monitor + registration); hiding path needs app+module test |
+| 3 | `sus_path` (hide files/dirs), sdcard monitor | done, verified on device (hiding checked from an app process, needs stage 4 0004) |
 | 4 | `open_redirect`, symbol hiding, avc log spoofing | done, verified on device |
 
 Each stage gets its own Kconfig option. Only options that are already ported
@@ -105,7 +105,8 @@ ksu_susfs add_sus_map /path/of/file_or_directory
 The spoofs only apply to app processes (`uid % 100000 >= 10000`); `sus_map`
 additionally requires the reader to be marked umounted. `kernel_umount.c`
 now sets `TIF_KSU_UNMOUNTABLE` whenever SUSFS is enabled, so the marking
-works without `CONFIG_KSU_HOSTSREDIRECT`.
+works without `CONFIG_KSU_HOSTSREDIRECT`, and (since stage 4 0004) also
+when kernel umount is disabled in the manager.
 
 Stage 4 adds the remaining optional features:
 
@@ -215,6 +216,10 @@ results come back through `info.err`.
 - `kernel_umount.c` sets `TIF_KSU_UNMOUNTABLE` whenever SUSFS is enabled
   (not only under `KSU_HOSTSREDIRECT`), otherwise `sus_map` and the
   fdinfo/statfs spoofs for umounted apps never trigger on this fork.
+  The mark must also come before the `ksu_kernel_umount_enabled` and
+  `ksu_module_mounted` checks, as in upstream `handle_zygote_setresuid()`.
+  Stages 2 and 3 set it after them, so with kernel umount off no app was
+  marked and every app-side feature was inert (fixed in stage 4 0004).
 
 ### Stage 3 (sus_path)
 
