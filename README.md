@@ -2,7 +2,7 @@
 
 A staged port of [susfs](https://gitlab.com/simonpunk/susfs4ksu) v2.3.0 to the
 OPPO A37 / A37f kernel (3.10.108, arm64), running LineageOS 20 with
-[KernelSU backslashxx](https://github.com/backslashxx/KernelSU) v3.3.0-48.
+[KernelSU backslashxx](https://github.com/backslashxx/KernelSU) v3.3.0-51.
 
 Upstream susfs targets GKI 5.10+, and its non-GKI branches stop at 4.9. The
 closest port is the 4.4 patch in
@@ -29,8 +29,8 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 
 ## Base
 
-- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `000cd62`
-  (KernelSU backslashxx v3.3.0-48, 32649, syscall-table hooks, no local
+- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `c277c55`
+  (KernelSU backslashxx v3.3.0-51, 32651, syscall-table hooks, no local
   changes). In this fork ksud does not mount modules itself; a metamodule
   does and then reports it with `ksud kernel notify-module-mounted`.
   Without a metamodule `ksu_module_mounted` stays false and kernel_umount
@@ -45,7 +45,7 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 On top of `wip/kernelsu`:
 
 ```sh
-git checkout -b wip/susfs 000cd62
+git checkout -b wip/susfs c277c55
 git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
