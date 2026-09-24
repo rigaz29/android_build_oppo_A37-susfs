@@ -248,6 +248,12 @@ results come back through `info.err`.
   (5.10 splits it into `open_last_lookups()`+`do_open()`), so the redirect
   re-walk releases the first open via `fput()`+`get_empty_filp()` first;
   otherwise `finish_open()` hits `BUG_ON(*opened & FILE_OPENED)`.
+- `do_last()` already ends with `terminate_walk()` in 3.10, so the redirect
+  branch must not call it again (0003). The extra call put the target's
+  dentry and vfsmount once more per redirected open, and the next umount
+  panicked with `dentry still in use (-1)`. To test, redirect a file on a
+  tmpfs, open it a few times and umount the tmpfs. A reboot is not a
+  reliable test: /data is often busy at shutdown and never unmounts.
 - No `set_nameidata()`/`restore_nameidata()`; the re-walk calls
   `path_init(dfd, fake->name, flags)` directly and drops the previous
   `base` file ref first.

@@ -1,0 +1,73 @@
+From bef95cbb333a4264d709a90cda22977f0966a693 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Thu, 24 Sep 2026 12:07:53 +0000
+Subject: [PATCH] fs: fix susfs open_redirect double path_put on 3.10
+
+do_last() in 3.10 already ends with terminate_walk(), so the extra
+terminate_walk() in the open_redirect branch put nd->path twice. Each
+redirected open left the target's dentry and vfsmount one ref short,
+and the next umount of that fs hit "dentry still in use (-1)" and
+panicked.
+
+Drop the extra terminate_walk(), check the redirect mark on the opened
+file's inode instead of the stale nd->path, and put nd->root before
+path_init() overwrites it.
+---
+ fs/namei.c | 35 +++++++++++++++++++----------------
+ 1 file changed, 19 insertions(+), 16 deletions(-)
+
+diff --git a/fs/namei.c b/fs/namei.c
+index 7fc8125870c..939d3a0a3a0 100644
+--- a/fs/namei.c
++++ b/fs/namei.c
+@@ -3219,28 +3219,31 @@ static struct file *path_openat(int dfd, struct filename *pathname,
+ 		put_link(nd, &link, cookie);
+ 	}
+ #ifdef CONFIG_KSU_SUSFS_OPEN_REDIRECT
+-	if (!error && dfd != -1 &&
+-		SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(nd->path.dentry->d_inode))
++	// do_last() has already done terminate_walk(nd), nd->path is not ours
++	if (!error && dfd != -1 && (opened & FILE_OPENED) &&
++		SUSFS_IS_INODE_OPEN_REDIRECT_WITHOUT_UID_CHECK(file_inode(file)))
+ 	{
+-		fake_filename = susfs_open_redirect_spoof_do_sys_openat(nd->path.dentry->d_inode);
++		fake_filename = susfs_open_redirect_spoof_do_sys_openat(file_inode(file));
+ 		if (fake_filename && !IS_ERR(fake_filename)) {
+ 			// 3.10 has no set_nameidata()/restore_nameidata(), and
+ 			// do_last() opens the file during the walk (5.10 opens in
+ 			// do_open() after the loop), so release the first open and
+ 			// walk again from scratch on the redirected path.
+-			terminate_walk(nd);
+-			if (opened & FILE_OPENED) {
+-				fput(file);
+-				file = get_empty_filp();
+-				if (IS_ERR(file)) {
+-					error = PTR_ERR(file);
+-					file = NULL;
+-					putname(fake_filename);
+-					fake_filename = NULL;
+-					goto out;
+-				}
+-				file->f_flags = op->open_flag;
+-				opened = 0;
++			fput(file);
++			file = get_empty_filp();
++			if (IS_ERR(file)) {
++				error = PTR_ERR(file);
++				file = NULL;
++				putname(fake_filename);
++				fake_filename = NULL;
++				goto out;
++			}
++			file->f_flags = op->open_flag;
++			opened = 0;
++			// path_init() resets nd->root without putting it
++			if (nd->root.mnt && !(nd->flags & LOOKUP_ROOT)) {
++				path_put(&nd->root);
++				nd->root.mnt = NULL;
+ 			}
+ 			if (base) {
+ 				fput(base);
+-- 
+2.43.0
+
