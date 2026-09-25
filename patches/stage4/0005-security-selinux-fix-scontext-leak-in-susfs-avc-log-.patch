@@ -1,0 +1,32 @@
+From 36b6bf8449d266c817334bf3c1d5cbcdef0c2622 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Fri, 25 Sep 2026 02:36:37 +0000
+Subject: [PATCH] security: selinux: fix scontext leak in susfs avc log
+ spoofing
+
+When avc log spoofing is on and the target is the ksu sid, the bypass
+skipped kfree(scontext) even though security_sid_to_context() had
+succeeded and allocated it. Free it before the goto.
+---
+ security/selinux/avc.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/security/selinux/avc.c b/security/selinux/avc.c
+index 94490f9aa3e..96d1e2b4d32 100644
+--- a/security/selinux/avc.c
++++ b/security/selinux/avc.c
+@@ -169,8 +169,10 @@ static void avc_dump_query(struct audit_buffer *ab, u32 ssid, u32 tsid, u16 tcla
+ 		if (unlikely(tsid == susfs_ksu_sid)) {
+ 			if (rc)
+ 				audit_log_format(ab, " tsid=%d", susfs_priv_app_sid);
+-			else
++			else {
+ 				audit_log_format(ab, " tcontext=%s", "u:r:priv_app:s0:c512,c768");
++				kfree(scontext);
++			}
+ 			goto bypass_orig_flow;
+ 		}
+ 	}
+-- 
+2.43.0
+
