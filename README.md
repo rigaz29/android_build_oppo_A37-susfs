@@ -123,8 +123,8 @@ Symbol hiding (`CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS`) is compile-time
 and drops `ksu_*`/`susfs_*` entries from `/proc/kallsyms`.
 
 Known caveat (upstream design): the `i_state` mark is in-memory only. If the
-inode is evicted from the icache before the file is re-opened, stat/statfs/
-fdinfo stop spoofing until `add_sus_kstat` is run again. The maps spoof
+inode is evicted from the icache before the file is re-opened, stat/statfs
+stop spoofing until `add_sus_kstat` is run again. The maps spoof
 (ino/dev) does not depend on the mark, only on the hash entry. In practice
 module scripts register after the file is in place and the daemon holds it
 open; on this 3.10 port this matches upstream susfs4ksu behaviour.
@@ -195,9 +195,16 @@ results come back through `info.err`.
 - 3.10 has no `vfs_getattr_nosec()`; the hook lives in `vfs_getattr()`
   after the security check, and `result_mask` is zeroed first because 3.10
   callers pass uninitialized stack kstats.
-- fdinfo base in 3.10 prints only pos/flags (no mnt_id/ino), so the 4.4
-  `sus_mount` fdinfo branch has nothing to spoof and is not ported; the
-  kstat branch prints the mnt_id/ino lines only for marked files.
+- fdinfo base in 3.10 prints only pos/flags (no mnt_id/ino), so neither
+  the 4.4 `sus_mount` nor the `sus_kstat` fdinfo branch is ported. Stage 2
+  first printed mnt_id/ino for marked files read by apps; that made those
+  files the only ones with a different fdinfo format, and Native Detector
+  flagged the three susfs4ksu `hide_vendor_sepolicy` files as
+  "Inconsistent Mount". Dropped in stage 2 0003.
+- `update_sus_kstat` takes `i_blocks` from the new inode together with
+  `i_size` (stage 2 0004). Upstream v2 updates only the size, so a
+  bind-mounted file shrunk by susfs4ksu (e.g. `vendor_sepolicy.cil`,
+  781308 -> 720622 bytes) kept the original 1528 blocks instead of 1408.
 - `inotify/fanotify_fdinfo()` keep 3.10's ret-accumulating show() style and
   `mark->mask` format.
 - `proc_map_files_readdir()` is two-pass here; the `sus_map` skip goes in
