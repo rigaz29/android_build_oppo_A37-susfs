@@ -205,6 +205,21 @@ results come back through `info.err`.
   `i_size` (stage 2 0004). Upstream v2 updates only the size, so a
   bind-mounted file shrunk by susfs4ksu (e.g. `vendor_sepolicy.cil`,
   781308 -> 720622 bytes) kept the original 1528 blocks instead of 1408.
+- Audit against upstream `gki-android12-5.10` HEAD (`9892175`, 26 Sep 2026)
+  turned up three bugs this port had, fixed in stage 2 0005-0007 and
+  checked on device as an app uid with an `add_sus_kstat_statically` entry:
+  - `KSTAT_SPOOF_CTIME_TV_SEC` was `(1 < 8)`, i.e. 1, the same bit as
+    `KSTAT_SPOOF_INO`. A ctime-only static entry left ctime unchanged;
+    now it is spoofed and the inode is left alone.
+  - `susfs_statfs_by_dentry()` treated the spoof helper's 0 (success) as a
+    miss, and the stored kstatfs had `f_flags = 0` because 3.10 sets
+    f_flags in `vfs_statfs()`. statfs() on a sus_kstat file on /data
+    returned `f_flags=0x0` next to `0x426` for its neighbour; now both are
+    `0x426` (upstream 38b8d14, b1de873, 6dc9308).
+  - `susfs_get_enabled_features()` wrote `info->err` with `info == NULL`
+    when kzalloc failed (upstream 8c71642).
+  Not taken from upstream: the 789702e refactor as a whole, and the
+  i_state -> i_mapping->flags move for the AS_FLAGS bits.
 - `inotify/fanotify_fdinfo()` keep 3.10's ret-accumulating show() style and
   `mark->mask` format.
 - `proc_map_files_readdir()` is two-pass here; the `sus_map` skip goes in

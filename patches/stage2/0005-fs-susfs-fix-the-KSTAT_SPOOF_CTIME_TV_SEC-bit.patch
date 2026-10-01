@@ -1,0 +1,28 @@
+From a79765264789086d400a3122c26052d952f6ea56 Mon Sep 17 00:00:00 2001
+From: rigaz29 <ryanbagas27@gmail.com>
+Date: Thu, 1 Oct 2026 00:41:36 +0000
+Subject: [PATCH] fs: susfs: fix the KSTAT_SPOOF_CTIME_TV_SEC bit
+
+It was (1 < 8), which is 1 and collides with KSTAT_SPOOF_INO, so a
+static ctime spoof never applied and ino-only entries spoofed ctime.
+Use bit 8 like ksu_susfs does.
+---
+ include/linux/susfs.h | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/include/linux/susfs.h b/include/linux/susfs.h
+index 125ec8faa09..77e11b6e931 100644
+--- a/include/linux/susfs.h
++++ b/include/linux/susfs.h
+@@ -68,7 +68,7 @@ struct st_susfs_hide_sus_mnts_for_non_su_procs {
+ #define KSTAT_SPOOF_ATIME_TV_NSEC (1 << 5)
+ #define KSTAT_SPOOF_MTIME_TV_SEC (1 << 6)
+ #define KSTAT_SPOOF_MTIME_TV_NSEC (1 << 7)
+-#define KSTAT_SPOOF_CTIME_TV_SEC (1 < 8)
++#define KSTAT_SPOOF_CTIME_TV_SEC (1 << 8)
+ #define KSTAT_SPOOF_CTIME_TV_NSEC (1 << 9)
+ #define KSTAT_SPOOF_BLOCKS (1 << 10)
+ #define KSTAT_SPOOF_BLKSIZE (1 << 11)
+-- 
+2.43.0
+
