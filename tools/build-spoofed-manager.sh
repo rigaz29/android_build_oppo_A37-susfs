@@ -42,7 +42,10 @@ abi_to_triple() { case "$1" in
   *) echo "unknown abi: $1" >&2; return 1;; esac; }
 
 WORK="${WORK:-$(mktemp -d)}"; SRC="${SRC:-$WORK/KernelSU}"
-[ -d "$SRC/.git" ] || git clone --depth 1 --branch "$REF" \
+# Full clone, NOT --depth 1: the manager's getVersionCode() = 30000 +
+# git-rev-list-count - 85, so a shallow clone (count = 1) produces a tiny
+# versionCode that Android then refuses to install over the existing manager.
+[ -d "$SRC/.git" ] || git clone --branch "$REF" \
   https://github.com/backslashxx/KernelSU "$SRC"
 cd "$SRC"
 
@@ -69,6 +72,7 @@ chmod +x gradlew
 
 APK="$(find app/build/outputs/apk/release -name '*.apk' | head -1)"
 echo "built: $APK"
-unzip -l "$APK" | grep -q 'lib/.*/libksud.so' && echo "libksud.so embedded: OK" \
+# jar (JDK) is always present here; unzip may not be
+"$JAVA_HOME/bin/jar" tf "$APK" | grep -q 'lib/.*/libksud.so' && echo "libksud.so embedded: OK" \
   || { echo "ERROR: libksud.so missing from APK" >&2; exit 1; }
 "$ANDROID_HOME"/build-tools/37.0.0/apksigner verify -v "$APK" | grep -i "scheme v2"
