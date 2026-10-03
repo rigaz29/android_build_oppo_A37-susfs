@@ -358,10 +358,14 @@ ANDROID_HOME=~/android-sdk KEY_ENV=./manager-key/key.env \
 ```
 
 SDK needs `platforms;android-37.0` (API 37 is minor-versioned),
-`build-tools;37.0.0`, `ndk;29.0.14206865`, `cmake;3.22.1`, plus JDK 21. The APK
-is v2-signed, which is what the kernel parses. Keep `PKG` stable across updates
-so the app updates in place; changing the pkgname does not change the cert, so
-the kernel hash never changes.
+`build-tools;37.0.0`, `ndk;29.0.14206865`, `cmake;3.22.1`, plus JDK 21 and
+`rustup`. The script builds ksud (the Rust daemon) with the same
+`KSU_PACKAGE_NAME` and drops it into `jniLibs/<abi>/libksud.so` before
+assembling: without it `:app:assembleRelease` ships no daemon and the manager
+comes up with empty modules and dead feature toggles. The APK is v2-signed,
+which is what the kernel parses. Keep `PKG` stable across updates so the app
+updates in place; changing the pkgname does not change the cert, so the kernel
+hash never changes.
 
 Flash the patched kernel before installing the spoofed manager (an old kernel
 does not trust the new cert), uninstall `me.weishu.kernelsu` first, then install
