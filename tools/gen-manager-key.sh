@@ -1,6 +1,6 @@
 #!/bin/bash
 # Generate a private signing key for the package-spoofed manager and print the
-# two constants the kernel needs (see patches/spoof/0001-*.patch).
+# two values the kernel build needs (KSU_EXPECTED_SIZE/KSU_EXPECTED_HASH).
 #
 # The key must be RSA-2048: the kernel's check_v2_signature caps the signer
 # cert at CERT_MAX_LENGTH = 1024 bytes, and an RSA-4096 cert (~1338 B) is
@@ -36,5 +36,5 @@ chmod 600 manager.jks key.env
   -storepass "$PASS" 2>/dev/null > cert.der
 SIZE=$(stat -c%s cert.der); HASH=$(sha256sum cert.der | cut -d' ' -f1)
 [ "$SIZE" -le 1024 ] || { echo "cert $SIZE B > 1024 (CERT_MAX_LENGTH); use RSA-2048" >&2; exit 1; }
-printf '\nAdd this pair to is_manager_apk (patches/spoof/0001-*.patch):\n'
-printf '  check_v2_signature(path, 0x%x, "%s")\n' "$SIZE" "$HASH"
+printf '\nBuild the kernel with:\n'
+printf '  make KSU_PACKAGE_NAME=<pkg> KSU_EXPECTED_SIZE=0x%x KSU_EXPECTED_HASH=%s\n' "$SIZE" "$HASH"

@@ -32,8 +32,7 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 - Kernel: `kernel_oppo_msm8939` `wip/kernelsu` (pure import of backslashxx
   `kernel/`), now at `2f62a48` (v3.3.0-63, 32664, syscall-table hooks, no local
   changes). The stage patches apply with `git am` on top of it. On a KernelSU
-  bump, re-land the susfs wiring and the spoof patch with a 3-way merge of
-  `drivers/kernelsu` (base = `wip/kernelsu` before the bump, ours = our tree,
+  bump, re-land the susfs wiring with a 3-way merge of `drivers/kernelsu` (base = `wip/kernelsu` before the bump, ours = our tree,
   theirs = new tag), and import the whole new `kernel/` into `wip/kernelsu`,
   not a delta. Don't rebuild the base from an upstream tag: backslashxx moves
   tags (`32651` was re-pointed on 3 Oct), and a merge against a moved tag
@@ -58,7 +57,6 @@ git am patches/stage1/*.patch
 git am patches/stage2/*.patch
 git am patches/stage3/*.patch
 git am patches/stage4/*.patch
-git am patches/spoof/*.patch   # optional, see "Manager package spoofing"
 ```
 
 `lineageos_a37f_defconfig` is updated by the series:
@@ -327,33 +325,31 @@ ksu_susfs set_uname '3.10.108-g1a2b3c4d' '#1 SMP PREEMPT'
 
 ## Manager package spoofing
 
-backslashxx ships no spoofed-build: its manager is signed with the public
-`manager/dummy.keystore`, and the kernel locks that cert to pkgname
-`me.weishu.kernelsu` (`is_manager_apk` in `drivers/kernelsu/manager/apk_sign.c`).
-KernelSU-Next / ReSukiSU can spoof because they sign with a private key and
-accept it under any pkgname.
+backslashxx ships no spoofed build. Its kernel checks the manager only under
+one package name, `KSU_PACKAGE_NAME` (default `me.weishu.kernelsu`, plus
+KowSU's), in `throne_tracker.c`, and trusts only a few signing certs in
+`is_manager_apk` (`apk_sign.c`): the public `manager/dummy.keystore`, KowSU's,
+and `KSU_EXPECTED_SIZE`/`KSU_EXPECTED_HASH` (the stock KernelSU cert).
 
-We do the same with our own key. Only the `applicationId` changes; gradle
-`namespace` stays `me.weishu.kernelsu`, so no manager source edit is needed and
-ksud's restart path `<package>/me.weishu.kernelsu.ui.MainActivity` still works.
-
-The kernel side is one patch, `patches/spoof/0001-*.patch` (applied after the
-susfs stages — it touches `apk_sign.c` and the `Makefile`):
+All three are variables in `drivers/kernelsu/Makefile`, and values given on the
+make command line override them, so no kernel patch is needed. Sign the manager
+with our own key under a random `applicationId`, and build the kernel with:
 
 ```sh
-git am patches/spoof/*.patch
+make KSU_PACKAGE_NAME=aaaaaa.bbbbbb.cccccc \
+     KSU_EXPECTED_SIZE=0x339 KSU_EXPECTED_HASH=<sha256 of the signer cert> ...
 ```
 
-Since KernelSU 32664, `apk_sign.c` no longer package-locks the dummy key, but
-`throne_tracker.c` only runs the signature check on a `/data/app` dir whose
-package name equals `KSU_PACKAGE_NAME` (or kowx712), and it looks up the manager
-uid by that same name. A random `applicationId` is therefore skipped and never
-crowned ("KernelSU not installed"). So the patch also sets `KSU_PACKAGE_NAME` to
-the spoofed package; keep it in sync with `work/ksu-manager-key/package-name.txt`.
-`is_manager_apk` still gates by our own cert, so the name is only a prefilter.
+Every kernel build has to pass them. Without them the build still succeeds, but
+the spoofed manager is never crowned and shows "KernelSU not installed". Our
+cert takes the stock cert's slot; the dummy key is still accepted, but only
+under our package name.
 
-Make a key and read off the two constants the patch hard-codes, then edit the
-patch (or `apk_sign.c`) to your own size/hash:
+Only the `applicationId` changes; gradle `namespace` stays `me.weishu.kernelsu`,
+so no manager source edit is needed and ksud's restart path
+`<package>/me.weishu.kernelsu.ui.MainActivity` still works.
+
+Make a key and read off the make values:
 
 ```sh
 tools/gen-manager-key.sh ./manager-key      # RSA-2048; prints size + sha256
@@ -382,8 +378,8 @@ which is what the kernel parses. Keep `PKG` stable across updates so the app
 updates in place; changing the pkgname does not change the cert, so the kernel
 hash never changes.
 
-Flash the patched kernel before installing the spoofed manager (an old kernel
-does not trust the new cert), uninstall `me.weishu.kernelsu` first, then install
+Flash a kernel built with these values before installing the spoofed manager
+(an older kernel does not trust the cert), uninstall `me.weishu.kernelsu` first, then install
 and open the spoofed APK once. The `/data/adb` allowlist survives.
 
 ## Credits
