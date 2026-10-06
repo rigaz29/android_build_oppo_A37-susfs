@@ -29,9 +29,14 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 
 ## Base
 
-- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` @ `c277c55`
-  (KernelSU backslashxx v3.3.0-51, 32651, syscall-table hooks, no local
-  changes). In this fork ksud does not mount modules itself; a metamodule
+- Kernel: `kernel_oppo_msm8939` `wip/kernelsu` (pure import of backslashxx
+  `kernel/`), now at `2f62a48` (v3.3.0-63, 32664, syscall-table hooks, no local
+  changes). The stage patches below were authored on the 32651 base; on a
+  KernelSU bump the susfs wiring and the spoof patch are re-landed onto the new
+  `kernel/` by a 3-way merge of `drivers/kernelsu` (base = old upstream tag,
+  ours = our tree, theirs = new tag), not a plain `git am` — 32651→32664 merged
+  with only `INTERNAL.md` conflicting. In this fork ksud does not mount modules
+  itself; a metamodule
   does and then reports it with `ksud kernel notify-module-mounted`.
   Without a metamodule `ksu_module_mounted` stays false and kernel_umount
   has nothing to do, which is expected. susfs marks apps either way
@@ -331,11 +336,19 @@ We do the same with our own key. Only the `applicationId` changes; gradle
 ksud's restart path `<package>/me.weishu.kernelsu.ui.MainActivity` still works.
 
 The kernel side is one patch, `patches/spoof/0001-*.patch` (applied after the
-susfs stages — it touches only `apk_sign.c`):
+susfs stages — it touches `apk_sign.c` and the `Makefile`):
 
 ```sh
 git am patches/spoof/*.patch
 ```
+
+Since KernelSU 32664, `apk_sign.c` no longer package-locks the dummy key, but
+`throne_tracker.c` only runs the signature check on a `/data/app` dir whose
+package name equals `KSU_PACKAGE_NAME` (or kowx712), and it looks up the manager
+uid by that same name. A random `applicationId` is therefore skipped and never
+crowned ("KernelSU not installed"). So the patch also sets `KSU_PACKAGE_NAME` to
+the spoofed package; keep it in sync with `work/ksu-manager-key/package-name.txt`.
+`is_manager_apk` still gates by our own cert, so the name is only a prefilter.
 
 Make a key and read off the two constants the patch hard-codes, then edit the
 patch (or `apk_sign.c`) to your own size/hash:
