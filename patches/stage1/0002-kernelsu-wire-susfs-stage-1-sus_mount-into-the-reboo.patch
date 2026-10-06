@@ -1,8 +1,8 @@
-From beac53cd975dfe9f0509b18c41b6d52c63a8323f Mon Sep 17 00:00:00 2001
+From f5d4e0b5d7224160cac57cd8aa8fbc7986d1cb33 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 13:24:52 +0000
-Subject: [PATCH 2/2] kernelsu: wire susfs stage 1 (sus_mount) into the reboot
- supercall
+Subject: [PATCH 04/21] kernelsu: wire susfs stage 1 (sus_mount) into the
+ reboot supercall
 
 Handle CMD_SUSFS_HIDE_SUS_MNTS_FOR_NON_SU_PROCS from root callers so
 ksu_susfs hide_sus_mnts_for_non_su_procs works. Expose
@@ -29,10 +29,10 @@ index d914727a85a..f8e798ef700 100644
  CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 +CONFIG_KSU_SUSFS_SUS_MOUNT=y
 diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
-index bd1ad539d10..790f7d5e66d 100644
+index 25f4218a77f..3186073b24e 100644
 --- a/drivers/kernelsu/Kconfig
 +++ b/drivers/kernelsu/Kconfig
-@@ -134,7 +134,7 @@ endmenu
+@@ -135,7 +135,7 @@ endmenu
  
  menu "KernelSU - SUSFS"
  # Only the features already ported to this 3.10 tree are exposed here. The
@@ -41,7 +41,7 @@ index bd1ad539d10..790f7d5e66d 100644
  # need VFS hooks that are not in yet; they get their option when ported.
  
  config KSU_SUSFS
-@@ -165,4 +165,13 @@ config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
+@@ -166,4 +166,13 @@ config KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG
  	help
  	  Spoof the output of /proc/cmdline.
  

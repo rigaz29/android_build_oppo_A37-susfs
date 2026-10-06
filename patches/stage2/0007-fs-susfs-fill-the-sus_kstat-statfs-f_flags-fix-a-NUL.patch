@@ -1,8 +1,8 @@
-From 3ef22a915488d097290c7f938fb1bbf1684cd3cd Mon Sep 17 00:00:00 2001
+From 1e72f781f30ce554d035df10ba4b17cd5dee7d64 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Thu, 1 Oct 2026 00:41:50 +0000
-Subject: [PATCH] fs: susfs: fill the sus_kstat statfs f_flags, fix a NULL
- deref
+Subject: [PATCH 12/21] fs: susfs: fill the sus_kstat statfs f_flags, fix a
+ NULL deref
 
 - The stored kstatfs had f_flags = 0 (3.10 sets it in vfs_statfs, not
   in statfs_by_dentry), so statfs() on a sus_kstat file showed no
@@ -16,7 +16,7 @@ Subject: [PATCH] fs: susfs: fill the sus_kstat statfs f_flags, fix a NULL
  1 file changed, 14 insertions(+), 20 deletions(-)
 
 diff --git a/fs/susfs.c b/fs/susfs.c
-index 21ac45115fe..3d4d5703969 100644
+index 716f5202f73..721b19a42c4 100644
 --- a/fs/susfs.c
 +++ b/fs/susfs.c
 @@ -287,22 +287,8 @@ out_copy_to_user:
@@ -66,7 +66,7 @@ index 21ac45115fe..3d4d5703969 100644
  	dput(no_sus_vfsmnt->mnt_root);
  	mntput(no_sus_vfsmnt);
  	if (err)
-@@ -1300,10 +1290,14 @@ void susfs_get_enabled_features(void __user **user_info) {
+@@ -1263,10 +1253,14 @@ void susfs_get_enabled_features(void __user **user_info) {
  	struct st_susfs_enabled_features *info = (struct st_susfs_enabled_features *)kzalloc(sizeof(struct st_susfs_enabled_features), GFP_KERNEL);
  	char *buf_ptr = NULL;
  	size_t copied_size = 0;

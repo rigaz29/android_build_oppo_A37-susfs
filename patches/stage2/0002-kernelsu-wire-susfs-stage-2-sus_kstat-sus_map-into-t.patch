@@ -1,7 +1,7 @@
-From 46f5962bd226ff7f63241b5d51439fb90e17d3d8 Mon Sep 17 00:00:00 2001
+From 0537e386c7bf58c9af30bada1b79e94dafdb1d07 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 14:55:39 +0000
-Subject: [PATCH 2/2] kernelsu: wire susfs stage 2 (sus_kstat, sus_map) into
+Subject: [PATCH 07/21] kernelsu: wire susfs stage 2 (sus_kstat, sus_map) into
  the reboot supercall
 
 Handle CMD_SUSFS_ADD_SUS_KSTAT, CMD_SUSFS_ADD_SUS_KSTAT_STATICALLY,
@@ -37,10 +37,10 @@ index f8e798ef700..aeea2ab10c6 100644
 +CONFIG_KSU_SUSFS_SUS_KSTAT=y
 +CONFIG_KSU_SUSFS_SUS_MAP=y
 diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
-index 790f7d5e66d..1936d0e0ce0 100644
+index 3186073b24e..4a249ff2979 100644
 --- a/drivers/kernelsu/Kconfig
 +++ b/drivers/kernelsu/Kconfig
-@@ -134,7 +134,7 @@ endmenu
+@@ -135,7 +135,7 @@ endmenu
  
  menu "KernelSU - SUSFS"
  # Only the features already ported to this 3.10 tree are exposed here. The
@@ -49,7 +49,7 @@ index 790f7d5e66d..1936d0e0ce0 100644
  # need VFS hooks that are not in yet; they get their option when ported.
  
  config KSU_SUSFS
-@@ -174,4 +174,21 @@ config KSU_SUSFS_SUS_MOUNT
+@@ -175,4 +175,21 @@ config KSU_SUSFS_SUS_MOUNT
  	  /proc/<pid>/mountinfo and /proc/<pid>/mountstats for non-su
  	  processes. Can be toggled at runtime with ksu_susfs.
  
@@ -72,10 +72,10 @@ index 790f7d5e66d..1936d0e0ce0 100644
 +
  endmenu
 diff --git a/drivers/kernelsu/feature/kernel_umount.c b/drivers/kernelsu/feature/kernel_umount.c
-index 15aded3c966..6381a33c9c6 100644
+index 1d8cd81b881..4d55fe9154f 100644
 --- a/drivers/kernelsu/feature/kernel_umount.c
 +++ b/drivers/kernelsu/feature/kernel_umount.c
-@@ -82,7 +82,9 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
+@@ -108,7 +108,9 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
  		return 0;
  	}
  

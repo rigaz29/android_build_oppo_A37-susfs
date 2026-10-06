@@ -1,7 +1,7 @@
-From 364988ba0976dd94cd2daf05f39c66effc5a3acc Mon Sep 17 00:00:00 2001
+From aaaed8147eb056fe9e6a29abd7e93caad4650fdd Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 12:23:57 +0000
-Subject: [PATCH 1/2] fs: add susfs v2.3.0 core, stage 0 for 3.10
+Subject: [PATCH 01/21] fs: add susfs v2.3.0 core, stage 0 for 3.10
 
 Take fs/susfs.c and the susfs headers from the 4.4 non-GKI port in
 JackA1ltman/NonGKI_Kernel_Build_2nd (susfs v2.3.0, simonpunk/susfs4ksu),

@@ -1,7 +1,7 @@
-From 9898696291126697c5c5375b6bf6eecf374bfa5c Mon Sep 17 00:00:00 2001
+From c19484e63d7dd31f1132923306b10320f4fc81dd Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 14:55:33 +0000
-Subject: [PATCH 1/2] fs: add susfs v2.3.0 sus_kstat and sus_map, stage 2 for
+Subject: [PATCH 06/21] fs: add susfs v2.3.0 sus_kstat and sus_map, stage 2 for
  3.10
 
 Port the kstat spoofing and map hiding hooks from the 4.4 non-GKI
@@ -50,7 +50,7 @@ maps/smaps/pagemap/map_files/access_remote_vm.
  11 files changed, 360 insertions(+), 2 deletions(-)
 
 diff --git a/fs/namespace.c b/fs/namespace.c
-index 6ae82cfab56..8680e3dc3e4 100644
+index d41ed4ab192..0dfa5cc54b3 100644
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
 @@ -35,6 +35,11 @@ extern struct static_key_true susfs_is_sdcard_android_data_not_decrypted;
@@ -65,7 +65,7 @@ index 6ae82cfab56..8680e3dc3e4 100644
  
  #define HASH_SHIFT ilog2(PAGE_SIZE / sizeof(struct list_head))
  #define HASH_SIZE (1UL << HASH_SHIFT)
-@@ -3229,3 +3234,43 @@ const struct proc_ns_operations mntns_operations = {
+@@ -3236,3 +3241,43 @@ const struct proc_ns_operations mntns_operations = {
  	.install	= mntns_install,
  	.inum		= mntns_inum,
  };

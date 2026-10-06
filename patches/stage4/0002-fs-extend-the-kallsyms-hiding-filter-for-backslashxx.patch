@@ -1,8 +1,8 @@
-From c73b2e2c0283243eebee1f94eaf999ee93c137d3 Mon Sep 17 00:00:00 2001
+From 0bef61e8ed72f7c93d529164354fc2aa4608e46d Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 17:55:49 +0000
-Subject: [PATCH] fs: extend the kallsyms hiding filter for backslashxx symbol
- names
+Subject: [PATCH 17/21] fs: extend the kallsyms hiding filter for backslashxx
+ symbol names
 
 The upstream 4.4 prefix list misses symbols this fork introduces:
 anon_ksu_*, do_ksu_*, setup_ksu_cred, is_task_ksu_domain and

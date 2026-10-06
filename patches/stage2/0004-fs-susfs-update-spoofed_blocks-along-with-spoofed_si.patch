@@ -1,7 +1,8 @@
-From ae891268caa25b15abf4a15d8eea23a93db7a18f Mon Sep 17 00:00:00 2001
+From 26e560980a188d2137cd8f46b2554dc2d95eddcc Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 30 Sep 2026 16:32:29 +0000
-Subject: [PATCH] fs: susfs: update spoofed_blocks along with spoofed_size
+Subject: [PATCH 09/21] fs: susfs: update spoofed_blocks along with
+ spoofed_size
 
 update_sus_kstat takes the new file's size after a bind mount but kept
 the original st_blocks. The susfs4ksu hide_vendor_sepolicy mounts then
@@ -13,7 +14,7 @@ too, as the older susfs 1.5 update path did.
  1 file changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/fs/susfs.c b/fs/susfs.c
-index dd6e98c6887..21ac45115fe 100644
+index f67e1000bab..716f5202f73 100644
 --- a/fs/susfs.c
 +++ b/fs/susfs.c
 @@ -331,8 +331,10 @@ static int susfs_mark_inode_sus_kstat(char *target_pathname, struct st_susfs_sus

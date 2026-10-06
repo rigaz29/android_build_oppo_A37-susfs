@@ -1,7 +1,7 @@
-From 08b0c09158a26f6b06aa9ff484a97d408cbb85b4 Mon Sep 17 00:00:00 2001
+From 08d8cb3a6792852fc09aa2ed4dc75c77799a0479 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 17:46:13 +0000
-Subject: [PATCH 2/2] kernelsu: wire susfs stage 4 (open_redirect, symbol
+Subject: [PATCH 18/21] kernelsu: wire susfs stage 4 (open_redirect, symbol
  hiding) into supercalls
 
 Handle CMD_SUSFS_ADD_OPEN_REDIRECT from root callers. Expose
@@ -33,10 +33,10 @@ index 2db9fc52b78..68d17784921 100644
 +CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
 +CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
 diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
-index 48fdaee863a..f704b2d8ab8 100644
+index 200aea48a79..682f8435f40 100644
 --- a/drivers/kernelsu/Kconfig
 +++ b/drivers/kernelsu/Kconfig
-@@ -134,7 +134,7 @@ endmenu
+@@ -135,7 +135,7 @@ endmenu
  
  menu "KernelSU - SUSFS"
  # Only the features already ported to this 3.10 tree are exposed here. The
@@ -45,7 +45,7 @@ index 48fdaee863a..f704b2d8ab8 100644
  # need VFS hooks that are not in yet; they get their option when ported.
  
  config KSU_SUSFS
-@@ -200,4 +200,20 @@ config KSU_SUSFS_SUS_PATH
+@@ -201,4 +201,20 @@ config KSU_SUSFS_SUS_PATH
  	  path lookups and readdir of umounted app processes, plus the
  	  /sdcard decryption fsnotify monitor.
  

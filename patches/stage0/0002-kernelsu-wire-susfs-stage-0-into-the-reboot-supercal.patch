@@ -1,7 +1,7 @@
-From 443a7c61f0c04ec60090c066251aa044643636bc Mon Sep 17 00:00:00 2001
+From 36079e922ca55dd1780dd362c58571c32171bcc9 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 12:23:57 +0000
-Subject: [PATCH 2/2] kernelsu: wire susfs stage 0 into the reboot supercall
+Subject: [PATCH 02/21] kernelsu: wire susfs stage 0 into the reboot supercall
 
 ksu_susfs talks to the kernel with reboot(KSU_INSTALL_MAGIC1, SUSFS_MAGIC,
 cmd, &info). Handle SUSFS_MAGIC from root callers in ksu_handle_sys_reboot()
@@ -15,9 +15,9 @@ in lineageos_a37f_defconfig.
 ---
  arch/arm64/configs/lineageos_a37f_defconfig |  5 +++
  drivers/kernelsu/Kconfig                    | 35 +++++++++++++++++
- drivers/kernelsu/ksu.c                      |  6 +++
+ drivers/kernelsu/ksu.c                      |  9 +++++
  drivers/kernelsu/supercall/supercall.c      | 43 +++++++++++++++++++++
- 4 files changed, 89 insertions(+)
+ 4 files changed, 92 insertions(+)
 
 diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
 index 6b0a9412a43..d914727a85a 100644
@@ -33,10 +33,10 @@ index 6b0a9412a43..d914727a85a 100644
 +CONFIG_KSU_SUSFS_ENABLE_LOG=y
 +CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
 diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
-index 45e09d1faf1..bd1ad539d10 100644
+index ed3165b9e9a..25f4218a77f 100644
 --- a/drivers/kernelsu/Kconfig
 +++ b/drivers/kernelsu/Kconfig
-@@ -131,3 +131,38 @@ config KSU_HEURISTIC_IN_TREE_BUILD
+@@ -132,3 +132,38 @@ config KSU_HEURISTIC_IN_TREE_BUILD
  	default y
  
  endmenu
@@ -76,7 +76,7 @@ index 45e09d1faf1..bd1ad539d10 100644
 +
 +endmenu
 diff --git a/drivers/kernelsu/ksu.c b/drivers/kernelsu/ksu.c
-index 06df055bb1e..18294d91feb 100644
+index fe5256ed7be..57d28afbfb1 100644
 --- a/drivers/kernelsu/ksu.c
 +++ b/drivers/kernelsu/ksu.c
 @@ -239,6 +239,9 @@ static int __init kernelsu_init(void)
@@ -89,16 +89,19 @@ index 06df055bb1e..18294d91feb 100644
  
  	ksu_sucompat_init(); // so the feature is registered
  
-@@ -287,6 +290,9 @@ device_initcall(kernelsu_init);
- char ksu_block_modules[256];
- module_param_string(block_modules, ksu_block_modules, sizeof(ksu_block_modules), 0);
+@@ -283,6 +286,12 @@ static int __init kernelsu_init(void)
+ device_initcall(kernelsu_init);
+ #else
  #include "downstream/module_blacklist.h"
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
 +#endif
- #else
- #define ksu_extend_module_blacklist() do { } while (0)
- #endif
++#else
++#define ksu_extend_module_blacklist() do { } while (0)
++#endif
+ 
+ #ifndef CONFIG_KSU_SHELL_HAS_SU_ALWAYS
+ /**
 diff --git a/drivers/kernelsu/supercall/supercall.c b/drivers/kernelsu/supercall/supercall.c
 index 59ec582f5d2..ecbe50e8fe9 100644
 --- a/drivers/kernelsu/supercall/supercall.c

@@ -1,7 +1,8 @@
-From c11f691ad75492c6cab5a5a39fea899ae2ad2f22 Mon Sep 17 00:00:00 2001
+From 0e73451510e13c894c1d30ceb7152dade6d43d2d Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 15:59:56 +0000
-Subject: [PATCH] fs: fix stage 3 sdcard monitor NULL should_send_event on 3.10
+Subject: [PATCH 14/21] fs: fix stage 3 sdcard monitor NULL should_send_event
+ on 3.10
 
 3.10's send_to_group() calls group->ops->should_send_event()
 unconditionally; the monitor ops left it NULL, so the first fsnotify
@@ -13,10 +14,10 @@ every candidate through; the file name filter lives in handle_event().
  1 file changed, 12 insertions(+), 1 deletion(-)
 
 diff --git a/fs/susfs.c b/fs/susfs.c
-index bbd81bf0f90..9904811fe39 100644
+index 7a42669b7c9..3f00910b4a2 100644
 --- a/fs/susfs.c
 +++ b/fs/susfs.c
-@@ -1459,7 +1459,17 @@ static int watch_one_dir(struct watch_dir *wd)
+@@ -1457,7 +1457,17 @@ static int watch_one_dir(struct watch_dir *wd)
  
  #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 3, 0)
  /* 3.10 fsnotify: handle_event() receives a struct fsnotify_event * instead
@@ -35,7 +36,7 @@ index bbd81bf0f90..9904811fe39 100644
  static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
  					   struct fsnotify_mark *inode_mark,
  					   struct fsnotify_mark *vfsmount_mark,
-@@ -1482,6 +1492,7 @@ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
+@@ -1480,6 +1490,7 @@ static int susfs_handle_sdcard_inode_event(struct fsnotify_group *group,
  }
  
  static const struct fsnotify_ops fsnotify_ops = {

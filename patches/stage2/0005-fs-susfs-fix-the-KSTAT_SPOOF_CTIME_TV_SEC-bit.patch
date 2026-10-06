@@ -1,7 +1,7 @@
-From a79765264789086d400a3122c26052d952f6ea56 Mon Sep 17 00:00:00 2001
+From f4f9738bbb3be9c5fe18c8dbab209dc899876781 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Thu, 1 Oct 2026 00:41:36 +0000
-Subject: [PATCH] fs: susfs: fix the KSTAT_SPOOF_CTIME_TV_SEC bit
+Subject: [PATCH 10/21] fs: susfs: fix the KSTAT_SPOOF_CTIME_TV_SEC bit
 
 It was (1 < 8), which is 1 and collides with KSTAT_SPOOF_INO, so a
 static ctime spoof never applied and ino-only entries spoofed ctime.

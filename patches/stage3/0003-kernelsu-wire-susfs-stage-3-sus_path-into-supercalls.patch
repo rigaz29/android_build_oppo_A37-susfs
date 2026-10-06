@@ -1,7 +1,7 @@
-From 306da1611b655d7181f7d342371d8d2a0db36112 Mon Sep 17 00:00:00 2001
+From 1087d49c59d5774c4feb863f77f36ad2c1ad9105 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 15:50:40 +0000
-Subject: [PATCH 2/2] kernelsu: wire susfs stage 3 (sus_path) into supercalls
+Subject: [PATCH 15/21] kernelsu: wire susfs stage 3 (sus_path) into supercalls
  and boot
 
 Handle CMD_SUSFS_ADD_SUS_PATH and CMD_SUSFS_ADD_SUS_PATH_LOOP from
@@ -37,10 +37,10 @@ index aeea2ab10c6..2db9fc52b78 100644
  CONFIG_KSU_SUSFS_SUS_MAP=y
 +CONFIG_KSU_SUSFS_SUS_PATH=y
 diff --git a/drivers/kernelsu/Kconfig b/drivers/kernelsu/Kconfig
-index 1936d0e0ce0..48fdaee863a 100644
+index 4a249ff2979..200aea48a79 100644
 --- a/drivers/kernelsu/Kconfig
 +++ b/drivers/kernelsu/Kconfig
-@@ -134,7 +134,7 @@ endmenu
+@@ -135,7 +135,7 @@ endmenu
  
  menu "KernelSU - SUSFS"
  # Only the features already ported to this 3.10 tree are exposed here. The
@@ -49,7 +49,7 @@ index 1936d0e0ce0..48fdaee863a 100644
  # need VFS hooks that are not in yet; they get their option when ported.
  
  config KSU_SUSFS
-@@ -191,4 +191,13 @@ config KSU_SUSFS_SUS_MAP
+@@ -192,4 +192,13 @@ config KSU_SUSFS_SUS_MAP
  	  Hide VMAs and map_files entries of files marked with
  	  ksu_susfs add_sus_map for umounted app processes.
  
@@ -64,10 +64,10 @@ index 1936d0e0ce0..48fdaee863a 100644
 +
  endmenu
 diff --git a/drivers/kernelsu/feature/kernel_umount.c b/drivers/kernelsu/feature/kernel_umount.c
-index 6381a33c9c6..fd80db61948 100644
+index 4d55fe9154f..004850ab16b 100644
 --- a/drivers/kernelsu/feature/kernel_umount.c
 +++ b/drivers/kernelsu/feature/kernel_umount.c
-@@ -100,6 +100,14 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
+@@ -126,6 +126,14 @@ static inline int ksu_handle_umount(struct cred *new, const struct cred *old)
  	}
  	up_read(&mount_list_lock);
  
@@ -83,7 +83,7 @@ index 6381a33c9c6..fd80db61948 100644
  
  	return 0;
 diff --git a/drivers/kernelsu/supercall/dispatch.c b/drivers/kernelsu/supercall/dispatch.c
-index fe628e38a0e..5cadbd0ffa9 100644
+index 8d94952228f..8127ee09cae 100644
 --- a/drivers/kernelsu/supercall/dispatch.c
 +++ b/drivers/kernelsu/supercall/dispatch.c
 @@ -1,3 +1,8 @@
@@ -95,7 +95,7 @@ index fe628e38a0e..5cadbd0ffa9 100644
  static int do_grant_root(void __user *arg)
  {
  	int ret;
-@@ -86,6 +91,9 @@ static int do_report_event(void __user *arg)
+@@ -90,6 +95,9 @@ static int do_report_event(void __user *arg)
  			boot_complete_lock = true;
  			pr_info("boot_complete triggered\n");
  			on_boot_completed();

@@ -1,7 +1,7 @@
-From 762e06a4982196a017635780907437f04759ccf5 Mon Sep 17 00:00:00 2001
+From a3ad4eb49ca4ccaa73adb965fd868c6edb4525a9 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 13:24:47 +0000
-Subject: [PATCH 1/2] fs: add susfs v2.3.0 sus_mount, stage 1 for 3.10
+Subject: [PATCH 03/21] fs: add susfs v2.3.0 sus_mount, stage 1 for 3.10
 
 Port the mount hiding from the 4.4 non-GKI susfs patch to 3.10:
 mounts made or cloned by su domain processes get fake mnt_ids from

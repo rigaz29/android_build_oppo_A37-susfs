@@ -1,7 +1,7 @@
-From 9b60895864483eaa2904f9e80346d9eb867827ca Mon Sep 17 00:00:00 2001
+From b90a0d1a16e64d5e4a3daf8fbaee68f420d7b257 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Fri, 25 Sep 2026 02:36:37 +0000
-Subject: [PATCH] fs: fix susfs sus_mount id leaks in clone_mnt and
+Subject: [PATCH 05/21] fs: fix susfs sus_mount id leaks in clone_mnt and
  mnt_alloc_group_id
 
 Two mnt_id/group_id accounting bugs in the 3.10 sus_mount port:
@@ -21,10 +21,10 @@ the ksu branch instead.
  1 file changed, 9 insertions(+), 2 deletions(-)
 
 diff --git a/fs/namespace.c b/fs/namespace.c
-index 8680e3dc3e4..0dfa5cc54b3 100644
+index 6ae82cfab56..d41ed4ab192 100644
 --- a/fs/namespace.c
 +++ b/fs/namespace.c
-@@ -134,7 +134,9 @@ static int mnt_alloc_group_id(struct mount *mnt)
+@@ -129,7 +129,9 @@ static int mnt_alloc_group_id(struct mount *mnt)
  		res = ida_get_new_above(&mnt_group_ida,
  					DEFAULT_KSU_MNT_GROUP_ID,
  					&mnt->mnt_group_id);
@@ -35,7 +35,7 @@ index 8680e3dc3e4..0dfa5cc54b3 100644
  	}
  
  	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
-@@ -142,7 +144,6 @@ static int mnt_alloc_group_id(struct mount *mnt)
+@@ -137,7 +139,6 @@ static int mnt_alloc_group_id(struct mount *mnt)
  	res = ida_get_new_above(&mnt_group_ida,
  				mnt_group_start,
  				&mnt->mnt_group_id);
@@ -43,7 +43,7 @@ index 8680e3dc3e4..0dfa5cc54b3 100644
  #else
  	if (!ida_pre_get(&mnt_group_ida, GFP_KERNEL))
  		return -ENOMEM;
-@@ -1082,6 +1083,12 @@ bypass_orig_flow:
+@@ -1077,6 +1078,12 @@ bypass_orig_flow:
  	mnt->mnt.mnt_flags = old->mnt.mnt_flags & ~(MNT_WRITE_HOLD|MNT_MARKED);
  
  #ifdef CONFIG_KSU_SUSFS_SUS_MOUNT

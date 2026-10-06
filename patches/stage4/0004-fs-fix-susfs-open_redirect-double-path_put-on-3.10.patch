@@ -1,7 +1,7 @@
-From bef95cbb333a4264d709a90cda22977f0966a693 Mon Sep 17 00:00:00 2001
+From 3adbfbfb987db7f72a3732c2312c0042036e0cdc Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Thu, 24 Sep 2026 12:07:53 +0000
-Subject: [PATCH] fs: fix susfs open_redirect double path_put on 3.10
+Subject: [PATCH 19/21] fs: fix susfs open_redirect double path_put on 3.10
 
 do_last() in 3.10 already ends with terminate_walk(), so the extra
 terminate_walk() in the open_redirect branch put nd->path twice. Each

@@ -1,7 +1,7 @@
-From b2061f0474218c4b7cff3055bfdf5656ec3bef0b Mon Sep 17 00:00:00 2001
+From c61c291a55ffae8a5d51bc3d74abc7339ee76c5e Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 15:50:34 +0000
-Subject: [PATCH 1/2] fs: add susfs v2.3.0 sus_path, stage 3 for 3.10
+Subject: [PATCH 13/21] fs: add susfs v2.3.0 sus_path, stage 3 for 3.10
 
 Port the file/dir hiding from the 4.4 non-GKI susfs patch to 3.10:
 path lookups skip inodes marked with add_sus_path and readdir drops
@@ -445,10 +445,10 @@ index d46eca8567a..cda968bc07f 100644
  	return error;
  }
 diff --git a/fs/susfs.c b/fs/susfs.c
-index f67e1000bab..bbd81bf0f90 100644
+index 721b19a42c4..7a42669b7c9 100644
 --- a/fs/susfs.c
 +++ b/fs/susfs.c
-@@ -1457,6 +1457,34 @@ static int watch_one_dir(struct watch_dir *wd)
+@@ -1455,6 +1455,34 @@ static int watch_one_dir(struct watch_dir *wd)
  	return 0;
  }
  
@@ -483,7 +483,7 @@ index f67e1000bab..bbd81bf0f90 100644
  /*
   * fsnotify handler — runs inside an SRCU read section held by fsnotify().
   * Must not block or call fsnotify_destroy_group() (which internally calls
-@@ -1485,6 +1513,7 @@ static const struct fsnotify_ops fsnotify_ops = {
+@@ -1483,6 +1511,7 @@ static const struct fsnotify_ops fsnotify_ops = {
  	.handle_event = susfs_handle_sdcard_inode_event,
  #endif
  };

@@ -1,7 +1,7 @@
-From 2fa0c3ad34e00f126e1b4c622c1874b29c5c94d5 Mon Sep 17 00:00:00 2001
+From c1fa1bad7c36195b533fa136ad41349a083daa10 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Thu, 1 Oct 2026 00:41:50 +0000
-Subject: [PATCH] fs: statfs: fix the inverted sus_kstat spoof check
+Subject: [PATCH 11/21] fs: statfs: fix the inverted sus_kstat spoof check
 
 susfs_sus_kstat_spoof_vfs_statfs() returns 0 after filling buf, but
 susfs_statfs_by_dentry() treated nonzero as success: a matching entry

@@ -1,7 +1,7 @@
-From 906bb5ceabbc23b04a376d82bd2653480fde280f Mon Sep 17 00:00:00 2001
+From c3ded90184d0c53c2c03936afd82a4ef7e30046f Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 30 Sep 2026 16:25:18 +0000
-Subject: [PATCH] fs: drop the susfs sus_kstat fdinfo lines on 3.10
+Subject: [PATCH 08/21] fs: drop the susfs sus_kstat fdinfo lines on 3.10
 
 3.10's /proc/<pid>/fdinfo prints only pos and flags. Stage 2 added
 mnt_id and ino lines, but only for sus_kstat files read by an app, so
