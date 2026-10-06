@@ -1,4 +1,4 @@
-From 36079e922ca55dd1780dd362c58571c32171bcc9 Mon Sep 17 00:00:00 2001
+From 46965a97890f94c2c6ba698e8eec9687fe2e5141 Mon Sep 17 00:00:00 2001
 From: rigaz29 <ryanbagas27@gmail.com>
 Date: Wed, 23 Sep 2026 12:23:57 +0000
 Subject: [PATCH 02/21] kernelsu: wire susfs stage 0 into the reboot supercall
@@ -15,9 +15,9 @@ in lineageos_a37f_defconfig.
 ---
  arch/arm64/configs/lineageos_a37f_defconfig |  5 +++
  drivers/kernelsu/Kconfig                    | 35 +++++++++++++++++
- drivers/kernelsu/ksu.c                      |  9 +++++
+ drivers/kernelsu/ksu.c                      |  6 +++
  drivers/kernelsu/supercall/supercall.c      | 43 +++++++++++++++++++++
- 4 files changed, 92 insertions(+)
+ 4 files changed, 89 insertions(+)
 
 diff --git a/arch/arm64/configs/lineageos_a37f_defconfig b/arch/arm64/configs/lineageos_a37f_defconfig
 index 6b0a9412a43..d914727a85a 100644
@@ -76,7 +76,7 @@ index ed3165b9e9a..25f4218a77f 100644
 +
 +endmenu
 diff --git a/drivers/kernelsu/ksu.c b/drivers/kernelsu/ksu.c
-index fe5256ed7be..57d28afbfb1 100644
+index fe5256ed7be..3bbd327b007 100644
 --- a/drivers/kernelsu/ksu.c
 +++ b/drivers/kernelsu/ksu.c
 @@ -239,6 +239,9 @@ static int __init kernelsu_init(void)
@@ -89,15 +89,12 @@ index fe5256ed7be..57d28afbfb1 100644
  
  	ksu_sucompat_init(); // so the feature is registered
  
-@@ -283,6 +286,12 @@ static int __init kernelsu_init(void)
+@@ -283,6 +286,9 @@ static int __init kernelsu_init(void)
  device_initcall(kernelsu_init);
  #else
  #include "downstream/module_blacklist.h"
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
-+#endif
-+#else
-+#define ksu_extend_module_blacklist() do { } while (0)
 +#endif
  
  #ifndef CONFIG_KSU_SHELL_HAS_SU_ALWAYS

@@ -2,7 +2,7 @@
 
 A staged port of [susfs](https://gitlab.com/simonpunk/susfs4ksu) v2.3.0 to the
 OPPO A37 / A37f kernel (3.10.108, arm64), running LineageOS 20 with
-[KernelSU backslashxx](https://github.com/backslashxx/KernelSU) v3.3.0-51.
+[KernelSU backslashxx](https://github.com/backslashxx/KernelSU) v3.3.0-63 (32664).
 
 Upstream susfs targets GKI 5.10+, and its non-GKI branches stop at 4.9. The
 closest port is the 4.4 patch in
@@ -31,12 +31,14 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 
 - Kernel: `kernel_oppo_msm8939` `wip/kernelsu` (pure import of backslashxx
   `kernel/`), now at `2f62a48` (v3.3.0-63, 32664, syscall-table hooks, no local
-  changes). The stage patches below were authored on the 32651 base; on a
-  KernelSU bump the susfs wiring and the spoof patch are re-landed onto the new
-  `kernel/` by a 3-way merge of `drivers/kernelsu` (base = old upstream tag,
-  ours = our tree, theirs = new tag), not a plain `git am` — 32651→32664 merged
-  with only `INTERNAL.md` conflicting. In this fork ksud does not mount modules
-  itself; a metamodule
+  changes). The stage patches apply with `git am` on top of it. On a KernelSU
+  bump, re-land the susfs wiring and the spoof patch with a 3-way merge of
+  `drivers/kernelsu` (base = `wip/kernelsu` before the bump, ours = our tree,
+  theirs = new tag), and import the whole new `kernel/` into `wip/kernelsu`,
+  not a delta. Don't rebuild the base from an upstream tag: backslashxx moves
+  tags (`32651` was re-pointed on 3 Oct), and a merge against a moved tag
+  silently keeps old upstream code as if it were ours. In this fork ksud does
+  not mount modules itself; a metamodule
   does and then reports it with `ksud kernel notify-module-mounted`.
   Without a metamodule `ksu_module_mounted` stays false and kernel_umount
   has nothing to do, which is expected. susfs marks apps either way
@@ -50,7 +52,7 @@ are defined, so an unported feature cannot be enabled and fail at link time.
 On top of `wip/kernelsu`:
 
 ```sh
-git checkout -b wip/susfs c277c55
+git checkout -b wip/susfs 2f62a48
 git am patches/stage0/*.patch
 git am patches/stage1/*.patch
 git am patches/stage2/*.patch
@@ -366,7 +368,7 @@ Build the manager at the git tag matching the kernel's `KSU_VERSION`:
 
 ```sh
 ANDROID_HOME=~/android-sdk KEY_ENV=./manager-key/key.env \
-  PKG=aaaaaa.bbbbbb.cccccc REF=v3.3.0-51 \
+  PKG=aaaaaa.bbbbbb.cccccc REF=v3.3.0-63 \
   tools/build-spoofed-manager.sh
 ```
 
